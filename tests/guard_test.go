@@ -79,3 +79,19 @@ func TestKeyPool_RoundRobinAndCooldown(t *testing.T) {
 		t.Errorf("expected valid key after cooldown expiration")
 	}
 }
+
+func TestGuard_JSONRepair(t *testing.T) {
+	// 1. Markdown codeblock stripping
+	markdownJSON := "```json\n{\n  \"name\": \"Kurisu\",\n  \"status\": \"active\"\n}\n```"
+	clean := guard.CleanAndRepairJSON(markdownJSON)
+	if clean != "{\n  \"name\": \"Kurisu\",\n  \"status\": \"active\"\n}" {
+		t.Errorf("failed to strip markdown fences: %s", clean)
+	}
+
+	// 2. Trailing comma fix
+	trailingCommaJSON := "{\"items\": [1, 2, 3,], \"valid\": true,}"
+	fixed := guard.CleanAndRepairJSON(trailingCommaJSON)
+	if fixed != "{\"items\": [1, 2, 3], \"valid\": true}" {
+		t.Errorf("failed to fix trailing commas: %s", fixed)
+	}
+}

@@ -20,14 +20,15 @@ type Config struct {
 	Routing   RoutingConfig   `yaml:"routing"`
 }
 
-// GuardConfig defines PII and secret redaction rules
+// GuardConfig defines PII, secret redaction, and output repair rules
 type GuardConfig struct {
-	Enabled     bool `yaml:"enabled"`
-	MaskSecrets bool `yaml:"mask_secrets"`
-	MaskEmails  bool `yaml:"mask_emails"`
-	MaskCards   bool `yaml:"mask_cards"`
-	MaskPhone   bool `yaml:"mask_phone"`
-	MaskSSN     bool `yaml:"mask_ssn"`
+	Enabled        bool `yaml:"enabled"`
+	MaskSecrets    bool `yaml:"mask_secrets"`
+	MaskEmails     bool `yaml:"mask_emails"`
+	MaskCards      bool `yaml:"mask_cards"`
+	MaskPhone      bool `yaml:"mask_phone"`
+	MaskSSN        bool `yaml:"mask_ssn"`
+	AutoJSONRepair bool `yaml:"auto_json_repair"`
 }
 
 // ServerConfig defines HTTP server options
@@ -56,8 +57,8 @@ type ExactCacheConfig struct {
 type SemanticCacheConfig struct {
 	Enabled             bool    `yaml:"enabled"`
 	SimilarityThreshold float64 `yaml:"similarity_threshold"` // e.g. 0.90 (0.0 to 1.0)
-	EmbeddingProvider   string  `yaml:"embedding_provider"`   // "openai" or "ollama"
-	EmbeddingModel      string  `yaml:"embedding_model"`      // "text-embedding-3-small"
+	EmbeddingProvider   string  `yaml:"embedding_provider"`   // "local" (zero-cost builtin), "openai", "ollama", or "auto"
+	EmbeddingModel      string  `yaml:"embedding_model"`      // "text-embedding-3-small" (if openai/ollama)
 	MaxEntries          int     `yaml:"max_entries"`
 	TTLSeconds          int     `yaml:"ttl_seconds"`
 }
@@ -110,21 +111,22 @@ func DefaultConfig() *Config {
 				TTLSeconds: 3600,
 			},
 			Semantic: SemanticCacheConfig{
-				Enabled:             false, // disabled by default until embedding key configured
+				Enabled:             true,
 				SimilarityThreshold: 0.90,
-				EmbeddingProvider:   "openai",
+				EmbeddingProvider:   "local", // "local", "openai", "ollama", or "auto"
 				EmbeddingModel:      "text-embedding-3-small",
 				MaxEntries:          5000,
 				TTLSeconds:          7200,
 			},
 		},
 		Guard: GuardConfig{
-			Enabled:     true,
-			MaskSecrets: true,
-			MaskEmails:  true,
-			MaskCards:   true,
-			MaskPhone:   false,
-			MaskSSN:     true,
+			Enabled:        true,
+			MaskSecrets:    true,
+			MaskEmails:     true,
+			MaskCards:      true,
+			MaskPhone:      false,
+			MaskSSN:        true,
+			AutoJSONRepair: true,
 		},
 		RateLimit: RateLimitConfig{
 			Enabled:           false,

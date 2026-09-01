@@ -26,6 +26,7 @@ type Executor struct {
 	cfg           *config.Config
 	embedProvider providers.Provider
 	redactor      *guard.Redactor
+	localEmbed    *cache.LocalEmbeddingEngine
 }
 
 // NewExecutor creates a new request executor
@@ -37,20 +38,21 @@ func NewExecutor(
 	collector *metrics.Collector,
 ) *Executor {
 	var embProv providers.Provider
-	if cfg.Cache.Semantic.Enabled {
-		// Discover embedding provider
+	if cfg.Cache.Semantic.Enabled && cfg.Cache.Semantic.EmbeddingProvider != "local" {
+		// Discover remote embedding provider if configured
 		if p, err := router.FindProvider("", cfg.Cache.Semantic.EmbeddingProvider); err == nil {
 			embProv = p
 		}
 	}
 
 	redactor := guard.NewRedactor(guard.RedactionConfig{
-		Enabled:     cfg.Guard.Enabled,
-		MaskSecrets: cfg.Guard.MaskSecrets,
-		MaskEmails:  cfg.Guard.MaskEmails,
-		MaskCards:   cfg.Guard.MaskCards,
-		MaskPhone:   cfg.Guard.MaskPhone,
-		MaskSSN:     cfg.Guard.MaskSSN,
+		Enabled:        cfg.Guard.Enabled,
+		MaskSecrets:    cfg.Guard.MaskSecrets,
+		MaskEmails:     cfg.Guard.MaskEmails,
+		MaskCards:      cfg.Guard.MaskCards,
+		MaskPhone:      cfg.Guard.MaskPhone,
+		MaskSSN:        cfg.Guard.MaskSSN,
+		AutoJSONRepair: cfg.Guard.AutoJSONRepair,
 	})
 
 	return &Executor{
@@ -61,6 +63,7 @@ func NewExecutor(
 		cfg:           cfg,
 		embedProvider: embProv,
 		redactor:      redactor,
+		localEmbed:    cache.NewLocalEmbeddingEngine(),
 	}
 }
 
@@ -118,13 +121,9 @@ func (e *Executor) ExecuteChatCompletion(ctx context.Context, req *domain.ChatCo
 	}
 	promptText = strings.TrimSpace(promptText)
 
-	if e.semanticCache != nil && !req.DisableCache && e.cfg.Cache.Semantic.Enabled && promptText != "" && e.embedProvider != nil {
-		embResp, err := e.embedProvider.Embed(ctx, &domain.EmbeddingRequest{
-			Model: e.cfg.Cache.Semantic.EmbeddingModel,
-			Input: promptText,
-		})
-		if err == nil && len(embResp.Data) > 0 {
-			queryVec := embResp.Data[0].Embedding
+	if e.semanticCache != nil && !req.DisableCache && e.cfg.Cache.Semantic.Enabled && promptText != "" {
+		queryVec, err := e.getPromptVector(ctx, promptText)
+		if err == nil && len(queryVec) > 0 {
 			if cached, score, ok := e.semanticCache.Search(queryVec, resolvedModel); ok {
 				duration := time.Since(start)
 				cached.KurisuMeta = &domain.KurisuMeta{
@@ -177,6 +176,14 @@ func (e *Executor) ExecuteChatCompletion(ctx context.Context, req *domain.ChatCo
 		resp, err := provider.Complete(ctx, &currentReq)
 		if err == nil && resp != nil {
 			duration := time.Since(start)
+
+			// Auto-repair JSON response if JSON object mode requested
+			if e.cfg.Guard.AutoJSONRepair && (req.ResponseFormat != nil && req.ResponseFormat.Type == "json_object") {
+				for i := range resp.Choices {
+					resp.Choices[i].Message.Content = guard.CleanAndRepairJSON(resp.Choices[i].Message.Content)
+				}
+			}
+
 			resp.KurisuMeta = &domain.KurisuMeta{
 				Provider:      provider.Name(),
 				ActualModel:   targetModel,
@@ -191,15 +198,12 @@ func (e *Executor) ExecuteChatCompletion(ctx context.Context, req *domain.ChatCo
 			}
 
 			// Save to Semantic Cache asynchronously
-			if e.semanticCache != nil && e.cfg.Cache.Semantic.Enabled && promptText != "" && e.embedProvider != nil {
+			if e.semanticCache != nil && e.cfg.Cache.Semantic.Enabled && promptText != "" {
 				go func(pText, mName string, rCopy domain.ChatCompletionResponse) {
 					bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 					defer cancel()
-					if eResp, err := e.embedProvider.Embed(bgCtx, &domain.EmbeddingRequest{
-						Model: e.cfg.Cache.Semantic.EmbeddingModel,
-						Input: pText,
-					}); err == nil && len(eResp.Data) > 0 {
-						e.semanticCache.Set(pText, mName, eResp.Data[0].Embedding, rCopy)
+					if vec, err := e.getPromptVector(bgCtx, pText); err == nil && len(vec) > 0 {
+						e.semanticCache.Set(pText, mName, vec, rCopy)
 					}
 				}(promptText, resolvedModel, *resp)
 			}
@@ -331,6 +335,24 @@ func (e *Executor) ExecuteEmbeddings(ctx context.Context, req *domain.EmbeddingR
 		return nil, err
 	}
 	return provider.Embed(ctx, req)
+}
+
+// getPromptVector retrieves embedding vector from remote provider or local built-in engine
+func (e *Executor) getPromptVector(ctx context.Context, text string) ([]float64, error) {
+	if e.cfg.Cache.Semantic.EmbeddingProvider == "local" || e.embedProvider == nil {
+		return e.localEmbed.EmbedText(text), nil
+	}
+
+	embResp, err := e.embedProvider.Embed(ctx, &domain.EmbeddingRequest{
+		Model: e.cfg.Cache.Semantic.EmbeddingModel,
+		Input: text,
+	})
+	if err == nil && len(embResp.Data) > 0 {
+		return embResp.Data[0].Embedding, nil
+	}
+
+	// Graceful fallback to zero-dependency local embedding if remote embedding fails
+	return e.localEmbed.EmbedText(text), nil
 }
 
 func isRetriableError(err error) bool {

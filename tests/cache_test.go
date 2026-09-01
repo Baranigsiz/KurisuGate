@@ -119,3 +119,29 @@ func TestSemanticCache(t *testing.T) {
 		t.Errorf("expected semantic miss for dissimilar vector")
 	}
 }
+
+func TestLocalEmbeddingEngine(t *testing.T) {
+	engine := cache.NewLocalEmbeddingEngine()
+
+	text1 := "How do I reverse a string in Go?"
+	text2 := "How to reverse a string in Golang?"
+	text3 := "Recipe for chocolate chip cookies"
+
+	vec1 := engine.EmbedText(text1)
+	vec2 := engine.EmbedText(text2)
+	vec3 := engine.EmbedText(text3)
+
+	if len(vec1) != cache.VectorDimension || len(vec2) != cache.VectorDimension {
+		t.Fatalf("expected vector dimension %d, got %d", cache.VectorDimension, len(vec1))
+	}
+
+	simClose := cache.CosineSimilarity(vec1, vec2)
+	simFar := cache.CosineSimilarity(vec1, vec3)
+
+	if simClose < 0.60 {
+		t.Errorf("expected high similarity for similar questions, got %f", simClose)
+	}
+	if simFar > 0.40 {
+		t.Errorf("expected low similarity for unrelated topics, got %f", simFar)
+	}
+}

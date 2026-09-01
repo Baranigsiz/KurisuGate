@@ -23,12 +23,13 @@ var (
 
 // RedactionConfig holds rules for what data types should be masked
 type RedactionConfig struct {
-	Enabled       bool `yaml:"enabled"`
-	MaskSecrets   bool `yaml:"mask_secrets"`
-	MaskEmails    bool `yaml:"mask_emails"`
-	MaskCards     bool `yaml:"mask_cards"`
-	MaskPhone     bool `yaml:"mask_phone"`
-	MaskSSN       bool `yaml:"mask_ssn"`
+	Enabled        bool `yaml:"enabled"`
+	MaskSecrets    bool `yaml:"mask_secrets"`
+	MaskEmails     bool `yaml:"mask_emails"`
+	MaskCards      bool `yaml:"mask_cards"`
+	MaskPhone      bool `yaml:"mask_phone"`
+	MaskSSN        bool `yaml:"mask_ssn"`
+	AutoJSONRepair bool `yaml:"auto_json_repair"`
 }
 
 // Redactor handles string inspection and masking

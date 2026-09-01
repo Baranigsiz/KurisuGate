@@ -1,4 +1,4 @@
-# ⚡ Kurisu (クリス) Configuration Template
+# ⚡ KurisuGate (クリス) Configuration Template
 # Universal AI Gateway & Semantic Cache in Go
 
 server:
@@ -10,16 +10,26 @@ server:
   enable_cors: true
   timeout_seconds: 120
 
+guard:
+  enabled: true
+  mask_secrets: true
+  mask_emails: true
+  mask_cards: true
+  mask_phone: false
+  mask_ssn: true
+  auto_json_repair: true # Strips markdown ```json fences & fixes broken brackets
+
 cache:
   exact:
     enabled: true
     max_entries: 10000
     ttl_seconds: 3600
   semantic:
-    enabled: false # Set to true to enable Vector Cosine Semantic Caching
+    enabled: true # Enabled with zero-cost local engine by default
     similarity_threshold: 0.90 # (0.85 - 0.95 recommended)
-    embedding_provider: "openai" # "openai" or "ollama"
-    embedding_model: "text-embedding-3-small"
+    # Options: "local" (zero-cost builtin N-gram vectorizer), "openai", "ollama", or "auto"
+    embedding_provider: "local"
+    embedding_model: "text-embedding-3-small" # used when provider is "openai" or "ollama"
     max_entries: 5000
     ttl_seconds: 7200
 
@@ -32,6 +42,10 @@ providers:
   openai:
     enabled: true
     api_key: "${OPENAI_API_KEY}"
+    # Optional Multi-Key Load Balancing Pool:
+    # api_keys:
+    #   - "sk-key-1"
+    #   - "sk-key-2"
     base_url: "https://api.openai.com/v1"
     models:
       - "gpt-4o"
