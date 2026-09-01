@@ -11,8 +11,9 @@
 # ⚡ KurisuGate (クリス)
 ### Universal AI Gateway, Semantic Cache & Multi-Model Proxy in Go
 
-[![Go Report Card](https://goreportcard.com/badge/github.com/Baranigsiz/KurisuGate)](https://goreportcard.com/report/github.com/Baranigsiz/KurisuGate)
+[![Release](https://img.shields.io/github/v/release/Baranigsiz/KurisuGate?color=brightgreen&label=release)](https://github.com/Baranigsiz/KurisuGate/releases)
 [![CI Build](https://github.com/Baranigsiz/KurisuGate/actions/workflows/ci.yml/badge.svg)](https://github.com/Baranigsiz/KurisuGate/actions)
+[![Go Reference](https://pkg.go.dev/badge/github.com/Baranigsiz/KurisuGate.svg)](https://pkg.go.dev/github.com/Baranigsiz/KurisuGate)
 [![Go Version](https://img.shields.io/badge/go-%3E%3D1.22-blue.svg)](https://golang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Docker](https://img.shields.io/badge/docker-ready-2496ED.svg)]()
