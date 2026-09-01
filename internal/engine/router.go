@@ -49,16 +49,80 @@ func NewRouter(cfg *config.Config, provs []providers.Provider) *Router {
 	}
 }
 
-// ResolveModel maps any alias to the concrete upstream model name
+// ResolveModel maps any alias or smart routing keywords (cheapest, fastest) to concrete models
 func (r *Router) ResolveModel(requested string) string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	lower := strings.ToLower(requested)
+
+	// 1. Smart Cost-Optimized Routing
+	if lower == "cheapest" || lower == "cost" || lower == "auto-cost" {
+		return r.findCheapestModel()
+	}
+
+	// 2. Smart Speed/Latency Routing
+	if lower == "fastest" || lower == "speed" || lower == "auto-fast" {
+		return r.findFastestModel()
+	}
+
+	// 3. User-defined static aliases
 	if target, exists := r.modelAliases[lower]; exists {
+		if target == "cheapest" {
+			return r.findCheapestModel()
+		}
+		if target == "fastest" {
+			return r.findFastestModel()
+		}
 		return target
 	}
+
 	return requested
+}
+
+func (r *Router) findCheapestModel() string {
+	// If Ollama is available, local models are 100% free!
+	if _, ok := r.providerMap["ollama"]; ok {
+		return "llama3.2"
+	}
+	if _, ok := r.providerMap["gemini"]; ok {
+		return "gemini-2.0-flash"
+	}
+	if _, ok := r.providerMap["deepseek"]; ok {
+		return "deepseek-chat"
+	}
+	if _, ok := r.providerMap["groq"]; ok {
+		return "llama-3.1-8b-instant"
+	}
+	if _, ok := r.providerMap["openai"]; ok {
+		return "gpt-4o-mini"
+	}
+	if _, ok := r.providerMap["mistral"]; ok {
+		return "mistral-small-latest"
+	}
+	if _, ok := r.providerMap["anthropic"]; ok {
+		return "claude-3-5-haiku-20241022"
+	}
+	return "gpt-4o-mini"
+}
+
+func (r *Router) findFastestModel() string {
+	if _, ok := r.providerMap["groq"]; ok {
+		return "llama-3.3-70b-versatile"
+	}
+	if _, ok := r.providerMap["gemini"]; ok {
+		return "gemini-2.0-flash"
+	}
+	if _, ok := r.providerMap["openai"]; ok {
+		return "gpt-4o-mini"
+	}
+	if _, ok := r.providerMap["anthropic"]; ok {
+		return "claude-3-5-haiku-20241022"
+	}
+	if _, ok := r.providerMap["deepseek"]; ok {
+		return "deepseek-chat"
+	}
+	return "gpt-4o-mini"
 }
 
 // GetFallbackChain returns fallback sequence for a given model
@@ -85,7 +149,7 @@ func (r *Router) FindProvider(model, forceProvider string) (providers.Provider, 
 		return nil, domain.ErrNotFound(fmt.Sprintf("forced provider %q not found or disabled", forceProvider))
 	}
 
-	// 1. Explicit model name prefix matching (e.g. "anthropic/claude-3-5-sonnet", "ollama/llama3")
+	// 1. Explicit model name prefix matching (e.g. "anthropic/claude-3-5-sonnet", "deepseek/deepseek-r1")
 	if strings.Contains(model, "/") {
 		parts := strings.SplitN(model, "/", 2)
 		prefix := strings.ToLower(parts[0])
@@ -101,7 +165,7 @@ func (r *Router) FindProvider(model, forceProvider string) (providers.Provider, 
 		}
 	}
 
-	// 3. Heuristics fallback
+	// 3. Heuristics fallback across all 12 major provider families
 	lower := strings.ToLower(model)
 	if strings.HasPrefix(lower, "claude-") {
 		if p, ok := r.providerMap["anthropic"]; ok {
@@ -110,6 +174,31 @@ func (r *Router) FindProvider(model, forceProvider string) (providers.Provider, 
 	}
 	if strings.HasPrefix(lower, "gemini-") {
 		if p, ok := r.providerMap["gemini"]; ok {
+			return p, nil
+		}
+	}
+	if strings.HasPrefix(lower, "deepseek-") || strings.HasPrefix(lower, "r1") {
+		if p, ok := r.providerMap["deepseek"]; ok {
+			return p, nil
+		}
+	}
+	if strings.HasPrefix(lower, "grok-") {
+		if p, ok := r.providerMap["xai"]; ok {
+			return p, nil
+		}
+	}
+	if strings.HasPrefix(lower, "mistral-") || strings.HasPrefix(lower, "codestral") || strings.HasPrefix(lower, "pixtral") {
+		if p, ok := r.providerMap["mistral"]; ok {
+			return p, nil
+		}
+	}
+	if strings.HasPrefix(lower, "sonar") {
+		if p, ok := r.providerMap["perplexity"]; ok {
+			return p, nil
+		}
+	}
+	if strings.HasPrefix(lower, "command-") {
+		if p, ok := r.providerMap["cohere"]; ok {
 			return p, nil
 		}
 	}

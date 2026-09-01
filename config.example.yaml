@@ -39,13 +39,12 @@ rate_limit:
   burst: 50
 
 providers:
+  # 1. OpenAI
   openai:
     enabled: true
     api_key: "${OPENAI_API_KEY}"
-    # Optional Multi-Key Load Balancing Pool:
-    # api_keys:
-    #   - "sk-key-1"
-    #   - "sk-key-2"
+    # Multi-Key Load Balancing Pool:
+    # api_keys: ["sk-key-1", "sk-key-2"]
     base_url: "https://api.openai.com/v1"
     models:
       - "gpt-4o"
@@ -53,6 +52,7 @@ providers:
       - "o1"
       - "o3-mini"
 
+  # 2. Anthropic Claude
   anthropic:
     enabled: true
     api_key: "${ANTHROPIC_API_KEY}"
@@ -62,6 +62,7 @@ providers:
       - "claude-3-5-haiku-20241022"
       - "claude-3-opus-20240229"
 
+  # 3. Google Gemini
   gemini:
     enabled: true
     api_key: "${GEMINI_API_KEY}"
@@ -71,6 +72,16 @@ providers:
       - "gemini-1.5-pro"
       - "gemini-1.5-flash"
 
+  # 4. DeepSeek (V3 & R1)
+  deepseek:
+    enabled: false
+    api_key: "${DEEPSEEK_API_KEY}"
+    base_url: "https://api.deepseek.com"
+    models:
+      - "deepseek-chat"
+      - "deepseek-reasoner"
+
+  # 5. Groq (Ultra-fast LPUs)
   groq:
     enabled: false
     api_key: "${GROQ_API_KEY}"
@@ -79,21 +90,89 @@ providers:
       - "llama-3.3-70b-versatile"
       - "llama-3.1-8b-instant"
 
+  # 6. Mistral AI
+  mistral:
+    enabled: false
+    api_key: "${MISTRAL_API_KEY}"
+    base_url: "https://api.mistral.ai/v1"
+    models:
+      - "mistral-large-latest"
+      - "codestral-latest"
+      - "mistral-small-latest"
+      - "pixtral-large-latest"
+
+  # 7. xAI (Elon Musk's Grok)
+  xai:
+    enabled: false
+    api_key: "${XAI_API_KEY}"
+    base_url: "https://api.x.ai/v1"
+    models:
+      - "grok-2"
+      - "grok-2-vision"
+      - "grok-beta"
+
+  # 8. OpenRouter (Universal AI Aggregator)
+  openrouter:
+    enabled: false
+    api_key: "${OPENROUTER_API_KEY}"
+    base_url: "https://openrouter.ai/api/v1"
+    models:
+      - "auto"
+      - "openai/gpt-4o"
+      - "anthropic/claude-3.5-sonnet"
+      - "deepseek/deepseek-r1"
+
+  # 9. Together AI
+  together:
+    enabled: false
+    api_key: "${TOGETHER_API_KEY}"
+    base_url: "https://api.together.xyz/v1"
+    models:
+      - "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo"
+      - "deepseek-ai/DeepSeek-R1"
+
+  # 10. Perplexity AI (Search LLMs)
+  perplexity:
+    enabled: false
+    api_key: "${PERPLEXITY_API_KEY}"
+    base_url: "https://api.perplexity.ai"
+    models:
+      - "sonar-pro"
+      - "sonar"
+      - "sonar-reasoning"
+
+  # 11. Cohere
+  cohere:
+    enabled: false
+    api_key: "${COHERE_API_KEY}"
+    base_url: "https://api.cohere.com/v2"
+    models:
+      - "command-r-plus"
+      - "command-r"
+
+  # 12. Local Ollama (100% Free & Offline)
   ollama:
     enabled: true
     base_url: "http://localhost:11434"
     models:
       - "llama3.2"
+      - "llama3.1"
       - "mistral"
       - "deepseek-r1:8b"
 
 routing:
-  # Map convenient friendly aliases to specific models
+  # Map convenient friendly aliases to specific models or smart routers
   model_aliases:
+    "cheapest": "cheapest" # Dynamically picks lowest cost active model
+    "fastest": "fastest"   # Dynamically picks lowest latency active model
     "fast": "gpt-4o-mini"
     "smart": "gpt-4o"
     "claude": "claude-3-5-sonnet-20241022"
     "gemini": "gemini-2.0-flash"
+    "deepseek": "deepseek-chat"
+    "r1": "deepseek-reasoner"
+    "grok": "grok-2"
+    "mistral": "mistral-large-latest"
     "local": "llama3.2"
 
   # Automatic fallback chains when primary provider returns 429 (Rate Limit) or 5xx error
@@ -101,8 +180,14 @@ routing:
     "gpt-4o":
       - "claude-3-5-sonnet-20241022"
       - "gemini-2.0-flash"
+      - "deepseek-chat"
       - "llama-3.3-70b-versatile"
       - "llama3.2"
     "claude-3-5-sonnet-20241022":
       - "gpt-4o"
       - "gemini-2.0-flash"
+      - "deepseek-chat"
+    "deepseek-reasoner":
+      - "o3-mini"
+      - "o1"
+      - "claude-3-5-sonnet-20241022"

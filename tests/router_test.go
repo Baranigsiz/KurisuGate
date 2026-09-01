@@ -52,6 +52,17 @@ func TestRouter_AliasAndFallback(t *testing.T) {
 	if err != nil || pClaude.Name() != "anthropic" {
 		t.Errorf("expected anthropic provider for claude, got %v", pClaude)
 	}
+
+	// Test Dynamic Smart Cost & Speed Routing
+	cheapest := router.ResolveModel("cheapest")
+	if cheapest == "" {
+		t.Errorf("expected valid model for cheapest routing, got empty")
+	}
+
+	fastest := router.ResolveModel("fastest")
+	if fastest == "" {
+		t.Errorf("expected valid model for fastest routing, got empty")
+	}
 }
 
 func TestMetricsCollector_CostCalculation(t *testing.T) {

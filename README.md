@@ -18,7 +18,7 @@
 [![Docker](https://img.shields.io/badge/docker-ready-2496ED.svg)]()
 [![Zero Dependency](https://img.shields.io/badge/dependencies-zero--external--runtime-success.svg)]()
 
-**KurisuGate (クリス)** is an ultra-fast, zero-dependency Universal AI Gateway and Reverse Proxy built in Go. It acts as a single, drop-in replacement for OpenAI endpoints (`/v1/chat/completions`, `/v1/embeddings`, `/v1/models`) that seamlessly bridges **OpenAI, Anthropic Claude, Google Gemini, Groq, DeepSeek, and local Ollama/vLLM** behind a unified interface with **Dual-Tier Semantic Caching, Automatic Multi-Model Fallback (429/500 Circuit Breaker), PII Privacy Guard, Multi-Key Load Balancing, an Embedded Web UI Playground, and a real-time Charm TUI Dashboard**.
+**KurisuGate (クリス)** is an ultra-fast, zero-dependency Universal AI Gateway and Reverse Proxy built in Go. It acts as a single, drop-in replacement for OpenAI endpoints (`/v1/chat/completions`, `/v1/embeddings`, `/v1/models`) that seamlessly bridges **OpenAI, Anthropic Claude, Google Gemini, DeepSeek (V3/R1), Groq, Mistral, xAI (Grok), Together AI, Perplexity, Cohere, OpenRouter, and local Ollama/vLLM** behind a unified interface with **Dual-Tier Zero-Cost Semantic Caching, Smart Lowest-Cost/Fastest Routing, Automatic Multi-Model Fallback, PII Privacy Guard, Multi-Key Load Balancing, an Embedded Web UI Playground, and a real-time Charm TUI Dashboard**.
 
 [Features](#-key-features) • [Architecture](#-architecture) • [Benchmarks](#-benchmarks) • [Quick Start](#-quick-start) • [Web UI & Playground](#-embedded-web-ui--playground) • [Configuration](#-configuration) • [SDK Integration](#-drop-in-sdk-integration)
 
@@ -28,12 +28,14 @@
 
 ## 🌟 Key Features
 
-* 🌐 **Universal Protocol Unification:** Translate standard OpenAI Chat Completions requests & real-time SSE streams on-the-fly to **Anthropic Claude (Messages API)**, **Google Gemini (Content API)**, **Groq**, and **local Ollama** with zero overhead.
+* 🌐 **12+ Major LLM Providers Supported:** Drop-in bridge for **OpenAI, Anthropic Claude, Google Gemini, DeepSeek, Groq, Mistral, xAI (Grok), Together AI, Perplexity, Cohere, OpenRouter, and local Ollama/vLLM** with zero external dependencies.
+* 💰 **Smart Dynamic Routing (`model: "cheapest"` & `model: "fastest"`):** Automatically analyzes real-time pricing and latency metrics across your enabled providers to route queries to the cheapest or lowest-latency model dynamically.
 * ⚡ **Sub-Millisecond Dual-Tier Caching:**
   * **Tier 1 (Exact LRU Cache):** Deterministic SHA-256 hash lookup with zero memory allocation and TTL (`< 25 ns` lookup time, **53M+ ops/sec**).
-  * **Tier 2 (Vector Semantic Cache):** In-memory Cosine Similarity search over prompt embeddings. Returns cached responses for semantically similar prompts, slashing API bills by up to **80%**.
-* 🛡️ **Resilient Multi-Model Fallback (Circuit Breaker):** If your primary provider throws `429 Too Many Requests`, `500 Internal Server Error`, or times out, KurisuGate automatically fails over down your configured fallback chain (e.g. `gpt-4o` ➔ `claude-3-5-sonnet` ➔ `gemini-2.0-flash` ➔ `ollama/llama3`) without failing the client request.
+  * **Tier 2 (Zero-Cost Local Semantic Cache):** In-memory Cosine Similarity search over prompt embeddings with built-in zero-dependency N-gram feature hasher (or remote embedding models). Slashes API bills by up to **80%**.
+* 🛡️ **Resilient Multi-Model Fallback (Circuit Breaker):** If your primary provider throws `429 Too Many Requests`, `500 Internal Server Error`, or times out, KurisuGate automatically fails over down your configured fallback chain (e.g. `gpt-4o` ➔ `claude-3-5-sonnet` ➔ `gemini-2.0-flash` ➔ `deepseek-chat` ➔ `ollama/llama3`) without failing the client request.
 * 🔒 **PII & Secret Redaction Guard:** Automatically intercepts and redacts sensitive data (API keys `sk-...`, AWS credentials, credit card numbers with Luhn check, emails, SSNs, passwords) before prompts reach external AI servers.
+* 🩹 **Auto JSON Repair & Markdown Cleaner:** Automatically strips markdown code fences (` ```json `) and fixes trailing commas/broken brackets when clients request structured JSON output.
 * ⚖️ **Multi-Key Load Balancing Pool:** Distribute traffic across multiple API keys per provider using Round-Robin and automatic cooldown to multiply your rate limits.
 * 🖥️ **Charm TUI Live Dashboard:** An interactive cyberpunk terminal UI built with `Bubbletea` & `Lipgloss` displaying real-time request streams, latency histograms, active provider distribution, and total dollar cost saved ($).
 * 🌐 **Embedded Web UI & Side-by-Side Playground (`/ui`):** Zero-dependency Web UI embedded directly into the Go binary (`embed.FS`) featuring live traffic analytics and a "Model Duel" playground to compare model outputs, latencies, and token costs side-by-side.

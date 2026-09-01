@@ -72,11 +72,18 @@ type RateLimitConfig struct {
 
 // ProvidersConfig holds API credentials and base URLs for upstream LLM providers
 type ProvidersConfig struct {
-	OpenAI    ProviderSettings `yaml:"openai"`
-	Anthropic ProviderSettings `yaml:"anthropic"`
-	Gemini    ProviderSettings `yaml:"gemini"`
-	Groq      ProviderSettings `yaml:"groq"`
-	Ollama    ProviderSettings `yaml:"ollama"`
+	OpenAI     ProviderSettings `yaml:"openai"`
+	Anthropic  ProviderSettings `yaml:"anthropic"`
+	Gemini     ProviderSettings `yaml:"gemini"`
+	DeepSeek   ProviderSettings `yaml:"deepseek"`
+	Groq       ProviderSettings `yaml:"groq"`
+	Mistral    ProviderSettings `yaml:"mistral"`
+	XAI        ProviderSettings `yaml:"xai"`
+	OpenRouter ProviderSettings `yaml:"openrouter"`
+	Together   ProviderSettings `yaml:"together"`
+	Perplexity ProviderSettings `yaml:"perplexity"`
+	Cohere     ProviderSettings `yaml:"cohere"`
+	Ollama     ProviderSettings `yaml:"ollama"`
 }
 
 // ProviderSettings represents individual provider config with multi-key pool support
@@ -137,7 +144,7 @@ func DefaultConfig() *Config {
 			OpenAI: ProviderSettings{
 				Enabled: false,
 				BaseURL: "https://api.openai.com/v1",
-				Models:  []string{"gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"},
+				Models:  []string{"gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo", "o1", "o3-mini"},
 			},
 			Anthropic: ProviderSettings{
 				Enabled: false,
@@ -149,35 +156,83 @@ func DefaultConfig() *Config {
 				BaseURL: "https://generativelanguage.googleapis.com/v1beta",
 				Models:  []string{"gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"},
 			},
+			DeepSeek: ProviderSettings{
+				Enabled: false,
+				BaseURL: "https://api.deepseek.com",
+				Models:  []string{"deepseek-chat", "deepseek-reasoner"},
+			},
 			Groq: ProviderSettings{
 				Enabled: false,
 				BaseURL: "https://api.groq.com/openai/v1",
 				Models:  []string{"llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"},
 			},
+			Mistral: ProviderSettings{
+				Enabled: false,
+				BaseURL: "https://api.mistral.ai/v1",
+				Models:  []string{"mistral-large-latest", "codestral-latest", "mistral-small-latest", "pixtral-large-latest"},
+			},
+			XAI: ProviderSettings{
+				Enabled: false,
+				BaseURL: "https://api.x.ai/v1",
+				Models:  []string{"grok-2", "grok-2-vision", "grok-beta"},
+			},
+			OpenRouter: ProviderSettings{
+				Enabled: false,
+				BaseURL: "https://openrouter.ai/api/v1",
+				Models:  []string{"auto", "openai/gpt-4o", "anthropic/claude-3.5-sonnet", "deepseek/deepseek-r1"},
+			},
+			Together: ProviderSettings{
+				Enabled: false,
+				BaseURL: "https://api.together.xyz/v1",
+				Models:  []string{"meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo", "deepseek-ai/DeepSeek-R1"},
+			},
+			Perplexity: ProviderSettings{
+				Enabled: false,
+				BaseURL: "https://api.perplexity.ai",
+				Models:  []string{"sonar-pro", "sonar", "sonar-reasoning"},
+			},
+			Cohere: ProviderSettings{
+				Enabled: false,
+				BaseURL: "https://api.cohere.com/v2",
+				Models:  []string{"command-r-plus", "command-r"},
+			},
 			Ollama: ProviderSettings{
 				Enabled: true,
 				BaseURL: "http://localhost:11434",
-				Models:  []string{"llama3.2", "llama3.1", "mistral", "phi3", "qwen2.5"},
+				Models:  []string{"llama3.2", "llama3.1", "mistral", "phi3", "qwen2.5", "deepseek-r1:8b"},
 			},
 		},
 		Routing: RoutingConfig{
 			ModelAliases: map[string]string{
-				"fast":   "gpt-4o-mini",
-				"smart":  "gpt-4o",
-				"claude": "claude-3-5-sonnet-20241022",
-				"gemini": "gemini-1.5-pro",
-				"local":  "llama3.2",
+				"cheapest": "cheapest",
+				"fastest":  "fastest",
+				"fast":     "gpt-4o-mini",
+				"smart":    "gpt-4o",
+				"claude":   "claude-3-5-sonnet-20241022",
+				"gemini":   "gemini-2.0-flash",
+				"deepseek": "deepseek-chat",
+				"r1":       "deepseek-reasoner",
+				"grok":     "grok-2",
+				"mistral":  "mistral-large-latest",
+				"local":    "llama3.2",
 			},
 			FallbackChains: map[string][]string{
 				"gpt-4o": {
 					"claude-3-5-sonnet-20241022",
-					"gemini-1.5-pro",
+					"gemini-2.0-flash",
+					"deepseek-chat",
 					"llama-3.3-70b-versatile",
 					"llama3.2",
 				},
 				"claude-3-5-sonnet-20241022": {
 					"gpt-4o",
-					"gemini-1.5-pro",
+					"gemini-2.0-flash",
+					"deepseek-chat",
+				},
+				"deepseek-reasoner": {
+					"o3-mini",
+					"o1",
+					"claude-3-5-sonnet-20241022",
 				},
 			},
 		},
@@ -256,10 +311,55 @@ func applyEnvOverrides(cfg *Config) {
 		cfg.Providers.Gemini.Enabled = true
 	}
 
+	// DeepSeek
+	if key := os.Getenv("DEEPSEEK_API_KEY"); key != "" {
+		cfg.Providers.DeepSeek.APIKey = key
+		cfg.Providers.DeepSeek.Enabled = true
+	}
+
 	// Groq
 	if key := os.Getenv("GROQ_API_KEY"); key != "" {
 		cfg.Providers.Groq.APIKey = key
 		cfg.Providers.Groq.Enabled = true
+	}
+
+	// Mistral
+	if key := os.Getenv("MISTRAL_API_KEY"); key != "" {
+		cfg.Providers.Mistral.APIKey = key
+		cfg.Providers.Mistral.Enabled = true
+	}
+
+	// xAI (Grok)
+	if key := os.Getenv("XAI_API_KEY"); key != "" {
+		cfg.Providers.XAI.APIKey = key
+		cfg.Providers.XAI.Enabled = true
+	} else if key := os.Getenv("GROK_API_KEY"); key != "" {
+		cfg.Providers.XAI.APIKey = key
+		cfg.Providers.XAI.Enabled = true
+	}
+
+	// OpenRouter
+	if key := os.Getenv("OPENROUTER_API_KEY"); key != "" {
+		cfg.Providers.OpenRouter.APIKey = key
+		cfg.Providers.OpenRouter.Enabled = true
+	}
+
+	// Together AI
+	if key := os.Getenv("TOGETHER_API_KEY"); key != "" {
+		cfg.Providers.Together.APIKey = key
+		cfg.Providers.Together.Enabled = true
+	}
+
+	// Perplexity
+	if key := os.Getenv("PERPLEXITY_API_KEY"); key != "" {
+		cfg.Providers.Perplexity.APIKey = key
+		cfg.Providers.Perplexity.Enabled = true
+	}
+
+	// Cohere
+	if key := os.Getenv("COHERE_API_KEY"); key != "" {
+		cfg.Providers.Cohere.APIKey = key
+		cfg.Providers.Cohere.Enabled = true
 	}
 
 	// Ollama

@@ -26,8 +26,27 @@ var DefaultPricingCatalog = map[string]ModelPricing{
 	"gemini-2.0-flash":            {InputPer1k: 0.0001, OutputPer1k: 0.0004},
 	"gemini-1.5-pro":              {InputPer1k: 0.00125, OutputPer1k: 0.0050},
 	"gemini-1.5-flash":            {InputPer1k: 0.000075, OutputPer1k: 0.0003},
+	"deepseek-chat":               {InputPer1k: 0.00014, OutputPer1k: 0.00028},
+	"deepseek-reasoner":           {InputPer1k: 0.00055, OutputPer1k: 0.00219},
+	"mistral-large-latest":        {InputPer1k: 0.0020, OutputPer1k: 0.0060},
+	"codestral-latest":            {InputPer1k: 0.0003, OutputPer1k: 0.0009},
+	"mistral-small-latest":        {InputPer1k: 0.0002, OutputPer1k: 0.0006},
+	"grok-2":                      {InputPer1k: 0.0020, OutputPer1k: 0.0100},
+	"grok-beta":                   {InputPer1k: 0.0050, OutputPer1k: 0.0150},
+	"sonar-pro":                   {InputPer1k: 0.0030, OutputPer1k: 0.0150},
+	"sonar":                       {InputPer1k: 0.0010, OutputPer1k: 0.0010},
+	"command-r-plus":              {InputPer1k: 0.0025, OutputPer1k: 0.0100},
 	"llama-3.3-70b-versatile":     {InputPer1k: 0.00059, OutputPer1k: 0.00079},
 	"llama-3.1-8b-instant":        {InputPer1k: 0.00005, OutputPer1k: 0.00008},
+}
+
+// GetModelPrice returns an estimated blended cost per 1k tokens for ranking purposes
+func GetModelPrice(model string) float64 {
+	p, ok := DefaultPricingCatalog[model]
+	if !ok {
+		return 0.001 // fallback median
+	}
+	return p.InputPer1k*0.75 + p.OutputPer1k*0.25
 }
 
 // RequestLog represents an individual processed request record for TUI and stats
