@@ -11,8 +11,8 @@
 # ⚡ KurisuGate (クリス)
 ### Universal AI Gateway, Semantic Cache & Multi-Model Proxy in Go
 
-[![Go Report Card](https://goreportcard.com/badge/github.com/Baranigsiz/kurisu)](https://goreportcard.com/report/github.com/Baranigsiz/kurisu)
-[![CI Build](https://img.shields.io/badge/build-passing-brightgreen.svg)]()
+[![Go Report Card](https://goreportcard.com/badge/github.com/Baranigsiz/KurisuGate)](https://goreportcard.com/report/github.com/Baranigsiz/KurisuGate)
+[![CI Build](https://github.com/Baranigsiz/KurisuGate/actions/workflows/ci.yml/badge.svg)](https://github.com/Baranigsiz/KurisuGate/actions)
 [![Go Version](https://img.shields.io/badge/go-%3E%3D1.22-blue.svg)](https://golang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Docker](https://img.shields.io/badge/docker-ready-2496ED.svg)]()
@@ -101,19 +101,28 @@ Benchmarked on **AMD Ryzen 5 5600X (6-Core, 12-Threads)** with `go test -bench=.
 
 ### 1. Installation
 
-#### Option A: Via Go Install
+#### Option A: One-Line Install (Recommended)
+```bash
+# Linux & macOS
+curl -fsSL https://raw.githubusercontent.com/Baranigsiz/KurisuGate/main/install.sh | sh
+
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/Baranigsiz/KurisuGate/main/install.ps1 | iex
+```
+
+#### Option B: Via Go Install
 ```bash
 go install github.com/Baranigsiz/kurisu/cmd/kurisu@latest
 ```
 
-#### Option B: Build from Source
+#### Option C: Build from Source
 ```bash
-git clone https://github.com/Baranigsiz/kurisu.git
-cd kurisu
+git clone https://github.com/Baranigsiz/KurisuGate.git
+cd KurisuGate
 go build -ldflags="-s -w" -o kurisugate ./cmd/kurisu
 ```
 
-#### Option C: Run with Docker
+#### Option D: Run with Docker
 ```bash
 docker run -d -p 8080:8080 \
   -e OPENAI_API_KEY="your-openai-key" \

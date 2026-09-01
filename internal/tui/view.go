@@ -141,7 +141,7 @@ func (m Model) View() string {
 	)
 
 	// 4. Footer
-	footer := HelpStyle.Render("  [q] Quit Dashboard  •  [r] Manual Refresh  •  Docs: github.com/Baranigsiz/kurisu")
+	footer := HelpStyle.Render("  [q] Quit Dashboard  •  [r] Manual Refresh  •  Docs: github.com/Baranigsiz/KurisuGate")
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,

@@ -12,8 +12,8 @@ First off, thank you for considering contributing to **KurisuGate**! We welcome 
 
 2. **Clone & Build:**
    ```bash
-   git clone https://github.com/Baranigsiz/kurisu.git
-   cd kurisu
+   git clone https://github.com/Baranigsiz/KurisuGate.git
+   cd KurisuGate
    go build -o kurisugate ./cmd/kurisu
    ```
 

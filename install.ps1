@@ -1,4 +1,4 @@
-$Repo = "Baranigsiz/kurisu"
+$Repo = "Baranigsiz/KurisuGate"
 $Binary = "kurisugate.exe"
 
 Write-Host "⚡ Installing KurisuGate for Windows..." -ForegroundColor Cyan

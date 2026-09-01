@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-REPO="Baranigsiz/kurisu"
+REPO="Baranigsiz/KurisuGate"
 BINARY="kurisugate"
 
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"

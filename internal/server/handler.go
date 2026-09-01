@@ -44,7 +44,7 @@ func (h *Handler) RootHandler(w http.ResponseWriter, r *http.Request) {
 		"version":     "v1.0.0",
 		"status":      "operational",
 		"uptime":      time.Since(h.startTime).String(),
-		"docs":        "https://github.com/Baranigsiz/kurisu",
+		"docs":        "https://github.com/Baranigsiz/KurisuGate",
 		"endpoints": []string{
 			"POST /v1/chat/completions",
 			"POST /v1/embeddings",
