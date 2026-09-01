@@ -1,14 +1,15 @@
 <div align="center">
 
-```text
+<pre align="center">
   _  __  _   _   ____    ___   ____    _   _    ____      _      _____   _____ 
  | |/ / | | | | |  _ \  |_ _| / ___|  | | | |  / ___|    / \    |_   _| | ____|
  | ' /  | | | | | |_) |  | |  \___ \  | | | | | |  _    / _ \     | |   |  _|  
  | . \  | |_| | |  _ <   | |   ___) | | |_| | | |_| |  / ___ \    | |   | |___ 
  |_|\_\  \___/  |_| \_\ |___| |____/   \___/   \____| /_/   \_\   |_|   |_____|
-```
+</pre>
 
-### ⚡ Universal AI Gateway, Semantic Cache & Multi-Model Proxy in Go
+# ⚡ KurisuGate (クリス)
+### Universal AI Gateway, Semantic Cache & Multi-Model Proxy in Go
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/Baranigsiz/kurisu)](https://goreportcard.com/report/github.com/Baranigsiz/kurisu)
 [![CI Build](https://img.shields.io/badge/build-passing-brightgreen.svg)]()
