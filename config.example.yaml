@@ -1,0 +1,94 @@
+# ⚡ Kurisu (クリス) Configuration Template
+# Universal AI Gateway & Semantic Cache in Go
+
+server:
+  host: "0.0.0.0"
+  port: 8080
+  # Leave empty to allow unauthenticated access from localhost/private network
+  master_keys:
+    - "sk-kurisu-local-master-key"
+  enable_cors: true
+  timeout_seconds: 120
+
+cache:
+  exact:
+    enabled: true
+    max_entries: 10000
+    ttl_seconds: 3600
+  semantic:
+    enabled: false # Set to true to enable Vector Cosine Semantic Caching
+    similarity_threshold: 0.90 # (0.85 - 0.95 recommended)
+    embedding_provider: "openai" # "openai" or "ollama"
+    embedding_model: "text-embedding-3-small"
+    max_entries: 5000
+    ttl_seconds: 7200
+
+rate_limit:
+  enabled: false
+  requests_per_minute: 300
+  burst: 50
+
+providers:
+  openai:
+    enabled: true
+    api_key: "${OPENAI_API_KEY}"
+    base_url: "https://api.openai.com/v1"
+    models:
+      - "gpt-4o"
+      - "gpt-4o-mini"
+      - "o1"
+      - "o3-mini"
+
+  anthropic:
+    enabled: true
+    api_key: "${ANTHROPIC_API_KEY}"
+    base_url: "https://api.anthropic.com/v1"
+    models:
+      - "claude-3-5-sonnet-20241022"
+      - "claude-3-5-haiku-20241022"
+      - "claude-3-opus-20240229"
+
+  gemini:
+    enabled: true
+    api_key: "${GEMINI_API_KEY}"
+    base_url: "https://generativelanguage.googleapis.com/v1beta"
+    models:
+      - "gemini-2.0-flash"
+      - "gemini-1.5-pro"
+      - "gemini-1.5-flash"
+
+  groq:
+    enabled: false
+    api_key: "${GROQ_API_KEY}"
+    base_url: "https://api.groq.com/openai/v1"
+    models:
+      - "llama-3.3-70b-versatile"
+      - "llama-3.1-8b-instant"
+
+  ollama:
+    enabled: true
+    base_url: "http://localhost:11434"
+    models:
+      - "llama3.2"
+      - "mistral"
+      - "deepseek-r1:8b"
+
+routing:
+  # Map convenient friendly aliases to specific models
+  model_aliases:
+    "fast": "gpt-4o-mini"
+    "smart": "gpt-4o"
+    "claude": "claude-3-5-sonnet-20241022"
+    "gemini": "gemini-2.0-flash"
+    "local": "llama3.2"
+
+  # Automatic fallback chains when primary provider returns 429 (Rate Limit) or 5xx error
+  fallback_chains:
+    "gpt-4o":
+      - "claude-3-5-sonnet-20241022"
+      - "gemini-2.0-flash"
+      - "llama-3.3-70b-versatile"
+      - "llama3.2"
+    "claude-3-5-sonnet-20241022":
+      - "gpt-4o"
+      - "gemini-2.0-flash"
