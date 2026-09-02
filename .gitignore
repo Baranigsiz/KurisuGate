@@ -4,12 +4,11 @@
 *.dll
 *.so
 *.dylib
-kurisu
-kurisugate
-kurisugate.exe
+/kurisu
+/kurisugate
+/kurisugate.exe
 /bin/
 /dist/
-build_dist.ps1
 
 # Test & coverage
 *.out
