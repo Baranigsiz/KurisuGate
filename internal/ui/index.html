@@ -787,6 +787,7 @@
               <tr>
                 <th>Team / Client Name</th>
                 <th>Virtual Key Token</th>
+                <th>Rate Limit</th>
                 <th>Monthly Budget</th>
                 <th>Spend & Utilization</th>
                 <th>Allowed Models</th>
@@ -796,7 +797,7 @@
             </thead>
             <tbody id="vk-tbody">
               <tr>
-                <td colspan="7" style="text-align: center; color: var(--text-dim); padding: 2.5rem;">Loading virtual keys...</td>
+                <td colspan="8" style="text-align: center; color: var(--text-dim); padding: 2.5rem;">Loading virtual keys...</td>
               </tr>
             </tbody>
           </table>
@@ -1029,6 +1030,11 @@ console.log(response.choices[0].message.content);</code></pre>
         <div class="form-group">
           <label class="form-label">Monthly Budget (USD) (Set 0 for unlimited)</label>
           <input type="number" id="new-key-budget" value="50.00" step="5.00" min="0">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Rate Limit RPM (Requests/min, 0 = global/unlimited)</label>
+          <input type="number" id="new-key-rpm" value="120" step="10" min="0">
         </div>
 
         <div class="form-group">
@@ -1328,6 +1334,9 @@ console.log(response.choices[0].message.content);</code></pre>
           : `<span class="badge badge-danger">DISABLED</span>`;
 
         const budgetDisplay = budget > 0 ? `$${budget.toFixed(2)}/mo` : 'Unlimited';
+        const rpmStr = (k.rate_limit_rpm && k.rate_limit_rpm > 0)
+          ? `<span class="badge" style="background: rgba(58, 134, 255, 0.2); color: var(--azure); font-weight: 700;">${k.rate_limit_rpm} RPM</span>`
+          : `<span style="color: var(--text-dim); font-size: 0.8rem;">Global</span>`;
 
         return `
           <tr>
@@ -1340,6 +1349,7 @@ console.log(response.choices[0].message.content);</code></pre>
                 <button class="btn" style="padding: 0.15rem 0.4rem; font-size: 0.72rem;" onclick="copyToClipboard('${k.key}', 'API Key copied!')" title="Copy Key">📋</button>
               </div>
             </td>
+            <td>${rpmStr}</td>
             <td style="font-weight: 600;">${budgetDisplay}</td>
             <td>
               <div class="budget-bar">
@@ -1379,6 +1389,7 @@ console.log(response.choices[0].message.content);</code></pre>
       const name = document.getElementById('new-key-name').value.trim();
       const token = document.getElementById('new-key-token').value.trim();
       const budget = parseFloat(document.getElementById('new-key-budget').value) || 0;
+      const rpm = parseInt(document.getElementById('new-key-rpm').value) || 0;
       const modelsRaw = document.getElementById('new-key-models').value.trim();
 
       if (!name) {
@@ -1399,6 +1410,7 @@ console.log(response.choices[0].message.content);</code></pre>
             name: name,
             key: token || undefined,
             monthly_budget_usd: budget,
+            rate_limit_rpm: rpm,
             allowed_models: allowedModels
           })
         });

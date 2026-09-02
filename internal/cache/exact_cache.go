@@ -225,7 +225,10 @@ func (c *ExactCache) ImportEntries(entries []ExactCacheEntryExport) int {
 	imported := 0
 	for _, e := range entries {
 		if now.Before(e.ExpiresAt) {
-			if len(c.items) >= c.capacity && c.tail != nil {
+			if existing, found := c.items[e.Key]; found {
+				c.removeNode(existing)
+				delete(c.items, e.Key)
+			} else if len(c.items) >= c.capacity && c.tail != nil {
 				evictedKey := c.tail.key
 				c.removeNode(c.tail)
 				delete(c.items, evictedKey)

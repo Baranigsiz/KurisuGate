@@ -102,6 +102,12 @@ func AuthMiddleware(cfg *config.Config, vkMgr *domain.VirtualKeyManager, next ht
 				return
 			}
 
+			// Check per-virtual-key rate limit if configured
+			if vk.RateLimitRPM > 0 && !vkMgr.AllowKey(apiKey) {
+				domain.ErrRateLimit(fmt.Sprintf("Rate limit of %d RPM exceeded for API key %q. Please slow down.", vk.RateLimitRPM, vk.Name)).WriteJSON(w)
+				return
+			}
+
 			// Inject virtual key into request context for downstream tracking
 			ctx := domain.WithVirtualKey(r.Context(), vk)
 			next.ServeHTTP(w, r.WithContext(ctx))

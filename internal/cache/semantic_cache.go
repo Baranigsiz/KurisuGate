@@ -187,5 +187,11 @@ func (s *SemanticCache) ImportEntries(entries []SemanticEntryExport) int {
 			imported++
 		}
 	}
+
+	// Enforce capacity limit by retaining the most recent s.capacity entries
+	if len(s.entries) > s.capacity {
+		s.entries = s.entries[len(s.entries)-s.capacity:]
+	}
+
 	return imported
 }

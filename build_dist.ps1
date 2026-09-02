@@ -1,3 +1,7 @@
+param(
+    [string]$Version = "v1.2.0"
+)
+
 $ErrorActionPreference = "Stop"
 
 if (!(Test-Path "dist")) {
@@ -13,12 +17,12 @@ $targets = @(
 )
 
 foreach ($t in $targets) {
-    Write-Host "Building for $($t.OS)/$($t.Arch)..." -ForegroundColor Cyan
+    Write-Host "Building for $($t.OS)/$($t.Arch) (Version: $Version)..." -ForegroundColor Cyan
     $env:GOOS = $t.OS
     $env:GOARCH = $t.Arch
     $outPath = "dist/$($t.Binary)"
     
-    go build -ldflags="-s -w -X main.Version=v1.0.0" -o $outPath ./cmd/kurisu
+    go build -ldflags="-s -w -X main.Version=$Version" -o $outPath ./cmd/kurisu
 
     if ($t.Archive.EndsWith(".zip")) {
         Compress-Archive -Path $outPath, "README.md", "LICENSE", "config.example.yaml" -DestinationPath "dist/$($t.Archive)" -Force

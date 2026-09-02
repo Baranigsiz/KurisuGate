@@ -62,9 +62,19 @@ func (p *Provider) SupportsModel(model string) bool {
 }
 
 // Anthropic Request structures
+type anthropicContentBlock struct {
+	Type      string          `json:"type"`
+	Text      string          `json:"text,omitempty"`
+	ID        string          `json:"id,omitempty"`
+	Name      string          `json:"name,omitempty"`
+	Input     json.RawMessage `json:"input,omitempty"`
+	ToolUseID string          `json:"tool_use_id,omitempty"`
+	Content   string          `json:"content,omitempty"`
+}
+
 type anthropicMessage struct {
 	Role    string      `json:"role"`
-	Content interface{} `json:"content"` // string or []contentBlock
+	Content interface{} `json:"content"` // string or []anthropicContentBlock
 }
 
 type anthropicTool struct {
@@ -73,15 +83,21 @@ type anthropicTool struct {
 	InputSchema json.RawMessage `json:"input_schema"`
 }
 
+type anthropicToolChoice struct {
+	Type string `json:"type"` // "auto", "any", "tool"
+	Name string `json:"name,omitempty"`
+}
+
 type anthropicReq struct {
-	Model       string             `json:"model"`
-	Messages    []anthropicMessage `json:"messages"`
-	System      string             `json:"system,omitempty"`
-	MaxTokens   int                `json:"max_tokens"`
-	Temperature *float64           `json:"temperature,omitempty"`
-	TopP        *float64           `json:"top_p,omitempty"`
-	Stream      bool               `json:"stream,omitempty"`
-	Tools       []anthropicTool    `json:"tools,omitempty"`
+	Model       string               `json:"model"`
+	Messages    []anthropicMessage   `json:"messages"`
+	System      string               `json:"system,omitempty"`
+	MaxTokens   int                  `json:"max_tokens"`
+	Temperature *float64             `json:"temperature,omitempty"`
+	TopP        *float64             `json:"top_p,omitempty"`
+	Stream      bool                 `json:"stream,omitempty"`
+	Tools       []anthropicTool      `json:"tools,omitempty"`
+	ToolChoice  *anthropicToolChoice `json:"tool_choice,omitempty"`
 }
 
 // Anthropic Response structures
@@ -191,6 +207,8 @@ func (p *Provider) Stream(ctx context.Context, req *domain.ChatCompletionRequest
 	scanner.Buffer(buf, 1024*1024)
 
 	var currentEvent string
+	var inputTokens int
+	var outputTokens int
 	msgID := "chatcmpl-" + uuid.New().String()
 	created := time.Now().Unix()
 
@@ -209,6 +227,35 @@ func (p *Provider) Stream(ctx context.Context, req *domain.ChatCompletionRequest
 			data := strings.TrimPrefix(line, "data: ")
 
 			switch currentEvent {
+			case "message_start":
+				var startEvt struct {
+					Message struct {
+						ID    string `json:"id"`
+						Usage struct {
+							InputTokens  int `json:"input_tokens"`
+							OutputTokens int `json:"output_tokens"`
+						} `json:"usage"`
+					} `json:"message"`
+				}
+				if err := json.Unmarshal([]byte(data), &startEvt); err == nil {
+					if startEvt.Message.ID != "" {
+						msgID = "chatcmpl-" + startEvt.Message.ID
+					}
+					if startEvt.Message.Usage.InputTokens > 0 {
+						inputTokens = startEvt.Message.Usage.InputTokens
+					}
+				}
+
+			case "message_delta":
+				var deltaEvt struct {
+					Usage struct {
+						OutputTokens int `json:"output_tokens"`
+					} `json:"usage"`
+				}
+				if err := json.Unmarshal([]byte(data), &deltaEvt); err == nil && deltaEvt.Usage.OutputTokens > 0 {
+					outputTokens = deltaEvt.Usage.OutputTokens
+				}
+
 			case "content_block_delta":
 				var delta struct {
 					Delta struct {
@@ -238,6 +285,14 @@ func (p *Provider) Stream(ctx context.Context, req *domain.ChatCompletionRequest
 
 			case "message_stop":
 				finish := "stop"
+				var usage *domain.Usage
+				if inputTokens > 0 || outputTokens > 0 {
+					usage = &domain.Usage{
+						PromptTokens:     inputTokens,
+						CompletionTokens: outputTokens,
+						TotalTokens:      inputTokens + outputTokens,
+					}
+				}
 				chunk := &domain.ChatCompletionChunk{
 					ID:      msgID,
 					Object:  "chat.completion.chunk",
@@ -249,6 +304,7 @@ func (p *Provider) Stream(ctx context.Context, req *domain.ChatCompletionRequest
 							FinishReason: &finish,
 						},
 					},
+					Usage: usage,
 				}
 				_ = onChunk(chunk)
 				return nil
@@ -299,16 +355,73 @@ func (p *Provider) transformRequest(req *domain.ChatCompletionRequest, stream bo
 	for _, msg := range req.Messages {
 		if msg.Role == domain.RoleSystem {
 			systemParts = append(systemParts, msg.Content)
-		} else {
-			role := msg.Role
-			if role != "user" && role != "assistant" {
-				role = "user"
+			continue
+		}
+
+		if msg.Role == domain.RoleTool || msg.Role == domain.RoleFunction {
+			callID := msg.ToolCallID
+			if callID == "" {
+				callID = "call_default"
+			}
+			blocks := []anthropicContentBlock{
+				{
+					Type:      "tool_result",
+					ToolUseID: callID,
+					Content:   msg.Content,
+				},
 			}
 			rawMessages = append(rawMessages, anthropicMessage{
-				Role:    role,
-				Content: msg.Content,
+				Role:    "user",
+				Content: blocks,
 			})
+			continue
 		}
+
+		if msg.Role == domain.RoleAssistant && len(msg.ToolCalls) > 0 {
+			var blocks []anthropicContentBlock
+			if strings.TrimSpace(msg.Content) != "" {
+				blocks = append(blocks, anthropicContentBlock{
+					Type: "text",
+					Text: msg.Content,
+				})
+			}
+			for _, tc := range msg.ToolCalls {
+				var rawInput json.RawMessage
+				if tc.Function.Arguments != "" {
+					rawInput = json.RawMessage(tc.Function.Arguments)
+				} else {
+					rawInput = json.RawMessage("{}")
+				}
+				callID := tc.ID
+				if callID == "" {
+					callID = "call_" + uuid.New().String()[:10]
+				}
+				blocks = append(blocks, anthropicContentBlock{
+					Type:  "tool_use",
+					ID:    callID,
+					Name:  tc.Function.Name,
+					Input: rawInput,
+				})
+			}
+			rawMessages = append(rawMessages, anthropicMessage{
+				Role:    "assistant",
+				Content: blocks,
+			})
+			continue
+		}
+
+		role := msg.Role
+		if role != "user" && role != "assistant" {
+			role = "user"
+		}
+		content := msg.Content
+		if strings.TrimSpace(content) == "" {
+			content = " "
+		}
+		rawMessages = append(rawMessages, anthropicMessage{
+			Role:    role,
+			Content: content,
+		})
 	}
 
 	// Anthropic Messages API requires messages to strictly alternate roles
@@ -330,6 +443,25 @@ func (p *Provider) transformRequest(req *domain.ChatCompletionRequest, stream bo
 		}
 	}
 
+	var toolChoice *anthropicToolChoice
+	if req.ToolChoice != nil {
+		switch v := req.ToolChoice.(type) {
+		case string:
+			switch strings.ToLower(v) {
+			case "auto":
+				toolChoice = &anthropicToolChoice{Type: "auto"}
+			case "required", "any":
+				toolChoice = &anthropicToolChoice{Type: "any"}
+			}
+		case map[string]interface{}:
+			if fn, ok := v["function"].(map[string]interface{}); ok {
+				if name, ok := fn["name"].(string); ok && name != "" {
+					toolChoice = &anthropicToolChoice{Type: "tool", Name: name}
+				}
+			}
+		}
+	}
+
 	return anthropicReq{
 		Model:       req.Model,
 		Messages:    messages,
@@ -339,6 +471,7 @@ func (p *Provider) transformRequest(req *domain.ChatCompletionRequest, stream bo
 		TopP:        req.TopP,
 		Stream:      stream,
 		Tools:       tools,
+		ToolChoice:  toolChoice,
 	}
 }
 
@@ -351,10 +484,8 @@ func mergeConsecutiveRoles(messages []anthropicMessage) []anthropicMessage {
 	var merged []anthropicMessage
 	for _, m := range messages {
 		if len(merged) > 0 && merged[len(merged)-1].Role == m.Role {
-			// Combine consecutive messages of the same role
-			prevContent := fmt.Sprintf("%v", merged[len(merged)-1].Content)
-			newContent := fmt.Sprintf("%v", m.Content)
-			merged[len(merged)-1].Content = prevContent + "\n\n" + newContent
+			prev := merged[len(merged)-1]
+			merged[len(merged)-1].Content = combineAnthropicContent(prev.Content, m.Content)
 		} else {
 			merged = append(merged, m)
 		}
@@ -366,6 +497,28 @@ func mergeConsecutiveRoles(messages []anthropicMessage) []anthropicMessage {
 	}
 
 	return merged
+}
+
+func combineAnthropicContent(a, b interface{}) interface{} {
+	strA, isStrA := a.(string)
+	strB, isStrB := b.(string)
+	if isStrA && isStrB {
+		return strA + "\n\n" + strB
+	}
+	blocksA := toContentBlocks(a)
+	blocksB := toContentBlocks(b)
+	return append(blocksA, blocksB...)
+}
+
+func toContentBlocks(c interface{}) []anthropicContentBlock {
+	switch v := c.(type) {
+	case []anthropicContentBlock:
+		return v
+	case string:
+		return []anthropicContentBlock{{Type: "text", Text: v}}
+	default:
+		return []anthropicContentBlock{{Type: "text", Text: fmt.Sprintf("%v", v)}}
+	}
 }
 
 func (p *Provider) transformResponse(aResp *anthropicResp, requestedModel string) *domain.ChatCompletionResponse {

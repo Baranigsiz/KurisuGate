@@ -43,16 +43,23 @@ type VirtualKey struct {
 	ExpiresAt        *time.Time `json:"expires_at,omitempty" yaml:"expires_at,omitempty"`
 }
 
+type keyRateLimitBucket struct {
+	tokens    float64
+	lastCheck time.Time
+}
+
 // VirtualKeyManager provides thread-safe validation and tracking for virtual API keys
 type VirtualKeyManager struct {
-	mu   sync.RWMutex
-	keys map[string]*VirtualKey
+	mu          sync.RWMutex
+	keys        map[string]*VirtualKey
+	rateBuckets map[string]*keyRateLimitBucket
 }
 
 // NewVirtualKeyManager constructs a manager with predefined virtual keys
 func NewVirtualKeyManager(initialKeys []VirtualKey) *VirtualKeyManager {
 	km := &VirtualKeyManager{
-		keys: make(map[string]*VirtualKey),
+		keys:        make(map[string]*VirtualKey),
+		rateBuckets: make(map[string]*keyRateLimitBucket),
 	}
 	for _, vk := range initialKeys {
 		kCopy := vk
@@ -154,13 +161,70 @@ func (m *VirtualKeyManager) List() []VirtualKey {
 	return list
 }
 
+// AllowKey checks if the virtual key has rate limit allowance.
+// If RateLimitRPM <= 0, returns true (unrestricted).
+func (m *VirtualKeyManager) AllowKey(apiKey string) bool {
+	if m == nil {
+		return true
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	apiKey = strings.TrimSpace(apiKey)
+	vk, exists := m.keys[apiKey]
+	if !exists || vk.RateLimitRPM <= 0 {
+		return true
+	}
+
+	now := time.Now()
+	rate := float64(vk.RateLimitRPM) / 60.0
+	burst := vk.RateLimitRPM / 10
+	if burst < 2 {
+		burst = 2
+	}
+
+	b, exists := m.rateBuckets[apiKey]
+	if !exists {
+		m.rateBuckets[apiKey] = &keyRateLimitBucket{
+			tokens:    float64(burst) - 1,
+			lastCheck: now,
+		}
+		return true
+	}
+
+	elapsed := now.Sub(b.lastCheck).Seconds()
+	b.tokens += elapsed * rate
+	if b.tokens > float64(burst) {
+		b.tokens = float64(burst)
+	}
+	b.lastCheck = now
+
+	if b.tokens >= 1.0 {
+		b.tokens -= 1.0
+		return true
+	}
+
+	return false
+}
+
 // Add registers or updates a virtual key
 func (m *VirtualKeyManager) Add(vk VirtualKey) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	key := strings.TrimSpace(vk.Key)
 	kCopy := vk
-	m.keys[strings.TrimSpace(vk.Key)] = &kCopy
+	kCopy.Key = key
+
+	// If key exists and update doesn't specify spend, preserve accumulated spend
+	if existing, exists := m.keys[key]; exists {
+		if kCopy.SpentUSD == 0 && existing.SpentUSD > 0 {
+			kCopy.SpentUSD = existing.SpentUSD
+		}
+	}
+
+	m.keys[key] = &kCopy
 }
 
 // Delete revokes and removes a virtual key by its key string
@@ -171,6 +235,7 @@ func (m *VirtualKeyManager) Delete(apiKey string) bool {
 	key := strings.TrimSpace(apiKey)
 	if _, exists := m.keys[key]; exists {
 		delete(m.keys, key)
+		delete(m.rateBuckets, key)
 		return true
 	}
 	return false

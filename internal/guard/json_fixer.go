@@ -88,8 +88,7 @@ func extractOuterJSON(s string) string {
 func attemptBracketRepair(s string) string {
 	var inString bool
 	var escaped bool
-	var openCurly int
-	var openSquare int
+	var stack []byte
 
 	for i := 0; i < len(s); i++ {
 		c := s[i]
@@ -111,33 +110,42 @@ func attemptBracketRepair(s string) string {
 
 		switch c {
 		case '{':
-			openCurly++
-		case '}':
-			if openCurly > 0 {
-				openCurly--
-			}
+			stack = append(stack, '{')
 		case '[':
-			openSquare++
+			stack = append(stack, '[')
+		case '}':
+			if len(stack) > 0 && stack[len(stack)-1] == '{' {
+				stack = stack[:len(stack)-1]
+			}
 		case ']':
-			if openSquare > 0 {
-				openSquare--
+			if len(stack) > 0 && stack[len(stack)-1] == '[' {
+				stack = stack[:len(stack)-1]
 			}
 		}
 	}
 
-	var b strings.Builder
-	b.WriteString(s)
-
-	// Close open string literal if needed
+	content := s
 	if inString {
-		b.WriteString("\"")
+		content += "\""
+	} else {
+		// If string ended with a dangling comma before unclosed brackets (e.g. `{"a": 1,`), strip it
+		trimmedTrailing := strings.TrimRight(content, " \t\r\n")
+		if strings.HasSuffix(trimmedTrailing, ",") {
+			content = trimmedTrailing[:len(trimmedTrailing)-1]
+		}
 	}
 
-	for i := 0; i < openSquare; i++ {
-		b.WriteString("]")
-	}
-	for i := 0; i < openCurly; i++ {
-		b.WriteString("}")
+	var b strings.Builder
+	b.WriteString(content)
+
+	// Pop remaining open brackets in LIFO order
+	for i := len(stack) - 1; i >= 0; i-- {
+		switch stack[i] {
+		case '{':
+			b.WriteString("}")
+		case '[':
+			b.WriteString("]")
+		}
 	}
 
 	return b.String()

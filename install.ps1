@@ -7,7 +7,7 @@ $Arch = if ([Environment]::Is64BitOperatingSystem) { "amd64" } else { "386" }
 $Release = try {
     (Invoke-RestMethod "https://api.github.com/repos/$Repo/releases/latest").tag_name
 } catch {
-    "v1.0.0"
+    "v1.2.0"
 }
 
 $ZipUrl = "https://github.com/$Repo/releases/download/$Release/kurisugate_windows_$Arch.zip"

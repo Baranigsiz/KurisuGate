@@ -28,7 +28,7 @@ import (
 )
 
 var (
-	Version   = "1.0.0"
+	Version   = "1.2.0"
 	BuildDate = "2026-09-02"
 	cfgFile   string
 	portFlag  int

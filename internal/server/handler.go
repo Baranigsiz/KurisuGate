@@ -50,7 +50,7 @@ func (h *Handler) RootHandler(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"service":     "Kurisu (クリス)",
 		"tagline":     "Universal AI Gateway & Semantic Cache in Go",
-		"version":     "v1.0.0",
+		"version":     "v1.2.0",
 		"status":      "operational",
 		"uptime":      time.Since(h.startTime).String(),
 		"docs":        "https://github.com/Baranigsiz/KurisuGate",
@@ -297,11 +297,15 @@ func (h *Handler) VirtualKeysHandler(w http.ResponseWriter, r *http.Request) {
 		})
 
 	case http.MethodPost:
-		var newKey domain.VirtualKey
-		if err := json.NewDecoder(r.Body).Decode(&newKey); err != nil {
+		var req struct {
+			domain.VirtualKey
+			EnabledPtr *bool `json:"enabled"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			domain.ErrInvalidRequest("Invalid JSON payload").WriteJSON(w)
 			return
 		}
+		newKey := req.VirtualKey
 		if strings.TrimSpace(newKey.Name) == "" {
 			domain.ErrInvalidRequest("Key name is required").WriteJSON(w)
 			return
@@ -311,15 +315,20 @@ func (h *Handler) VirtualKeysHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		newKey.Key = strings.TrimSpace(newKey.Key)
 		newKey.Name = strings.TrimSpace(newKey.Name)
-		newKey.Enabled = true
+		if req.EnabledPtr != nil {
+			newKey.Enabled = *req.EnabledPtr
+		} else {
+			newKey.Enabled = true
+		}
 		h.vkMgr.Add(newKey)
 
+		savedKey, _ := h.vkMgr.Get(newKey.Key)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"status":  "created",
-			"key":     newKey,
-			"message": "Virtual key created successfully",
+			"key":     savedKey,
+			"message": "Virtual key saved successfully",
 		})
 
 	case http.MethodDelete:

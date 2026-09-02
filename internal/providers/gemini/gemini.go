@@ -63,7 +63,37 @@ func (p *Provider) SupportsModel(model string) bool {
 
 // Gemini request structures
 type geminiPart struct {
-	Text string `json:"text,omitempty"`
+	Text             string                  `json:"text,omitempty"`
+	FunctionCall     *geminiFunctionCall     `json:"functionCall,omitempty"`
+	FunctionResponse *geminiFunctionResponse `json:"functionResponse,omitempty"`
+}
+
+type geminiFunctionCall struct {
+	Name string                 `json:"name"`
+	Args map[string]interface{} `json:"args,omitempty"`
+}
+
+type geminiFunctionResponse struct {
+	Name     string                 `json:"name"`
+	Response map[string]interface{} `json:"response"`
+}
+
+type geminiTool struct {
+	FunctionDeclarations []geminiFunctionDeclaration `json:"functionDeclarations,omitempty"`
+}
+
+type geminiFunctionDeclaration struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	Parameters  json.RawMessage `json:"parameters,omitempty"`
+}
+
+type geminiToolConfig struct {
+	FunctionCallingConfig *geminiFunctionCallingConfig `json:"functionCallingConfig,omitempty"`
+}
+
+type geminiFunctionCallingConfig struct {
+	Mode string `json:"mode"` // "AUTO", "ANY", "NONE"
 }
 
 type geminiContent struct {
@@ -85,6 +115,8 @@ type geminiReq struct {
 	Contents          []geminiContent          `json:"contents"`
 	SystemInstruction *geminiSystemInstruction `json:"system_instruction,omitempty"`
 	GenerationConfig  *geminiGenerationConfig  `json:"generationConfig,omitempty"`
+	Tools             []geminiTool             `json:"tools,omitempty"`
+	ToolConfig        *geminiToolConfig        `json:"toolConfig,omitempty"`
 }
 
 // Gemini response structures
@@ -212,17 +244,34 @@ func (p *Provider) Stream(ctx context.Context, req *domain.ChatCompletionRequest
 			if err := json.Unmarshal([]byte(data), &gResp); err == nil && len(gResp.Candidates) > 0 {
 				cand := gResp.Candidates[0]
 				var textDelta string
+				var chunkToolCalls []domain.ToolCall
 				for _, part := range cand.Content.Parts {
-					textDelta += part.Text
+					if part.Text != "" {
+						textDelta += part.Text
+					}
+					if part.FunctionCall != nil {
+						rawArgs, _ := json.Marshal(part.FunctionCall.Args)
+						chunkToolCalls = append(chunkToolCalls, domain.ToolCall{
+							ID:   "call_" + uuid.New().String()[:12],
+							Type: "function",
+							Function: domain.FunctionCall{
+								Name:      part.FunctionCall.Name,
+								Arguments: string(rawArgs),
+							},
+						})
+					}
 				}
 
 				var finishReason *string
-				if cand.FinishReason != "" {
+				if len(chunkToolCalls) > 0 {
+					fr := "tool_calls"
+					finishReason = &fr
+				} else if cand.FinishReason != "" && cand.FinishReason != "STOP" {
 					fr := strings.ToLower(cand.FinishReason)
 					finishReason = &fr
 				}
 
-				if textDelta != "" || finishReason != nil {
+				if textDelta != "" || len(chunkToolCalls) > 0 || finishReason != nil {
 					chunk := &domain.ChatCompletionChunk{
 						ID:      msgID,
 						Object:  "chat.completion.chunk",
@@ -232,7 +281,8 @@ func (p *Provider) Stream(ctx context.Context, req *domain.ChatCompletionRequest
 							{
 								Index: 0,
 								Delta: domain.ChunkDelta{
-									Content: textDelta,
+									Content:   textDelta,
+									ToolCalls: chunkToolCalls,
 								},
 								FinishReason: finishReason,
 							},
@@ -289,18 +339,69 @@ func (p *Provider) transformRequest(req *domain.ChatCompletionRequest) geminiReq
 	for _, msg := range req.Messages {
 		if msg.Role == domain.RoleSystem {
 			systemParts = append(systemParts, geminiPart{Text: msg.Content})
-		} else {
-			role := "user"
-			if msg.Role == domain.RoleAssistant {
-				role = "model"
+			continue
+		}
+
+		if msg.Role == domain.RoleTool || msg.Role == domain.RoleFunction {
+			var respMap map[string]interface{}
+			if err := json.Unmarshal([]byte(msg.Content), &respMap); err != nil {
+				respMap = map[string]interface{}{"content": msg.Content}
+			}
+			funcName := msg.Name
+			if funcName == "" {
+				funcName = msg.ToolCallID
+			}
+			if funcName == "" {
+				funcName = "function"
 			}
 			rawContents = append(rawContents, geminiContent{
-				Role: role,
+				Role: "function",
 				Parts: []geminiPart{
-					{Text: msg.Content},
+					{
+						FunctionResponse: &geminiFunctionResponse{
+							Name:     funcName,
+							Response: respMap,
+						},
+					},
+				},
+			})
+			continue
+		}
+
+		role := "user"
+		if msg.Role == domain.RoleAssistant {
+			role = "model"
+		}
+
+		var parts []geminiPart
+		if msg.Content != "" {
+			parts = append(parts, geminiPart{Text: msg.Content})
+		}
+
+		for _, tc := range msg.ToolCalls {
+			var args map[string]interface{}
+			if tc.Function.Arguments != "" {
+				_ = json.Unmarshal([]byte(tc.Function.Arguments), &args)
+			}
+			if args == nil {
+				args = make(map[string]interface{})
+			}
+			parts = append(parts, geminiPart{
+				FunctionCall: &geminiFunctionCall{
+					Name: tc.Function.Name,
+					Args: args,
 				},
 			})
 		}
+
+		if len(parts) == 0 {
+			parts = append(parts, geminiPart{Text: " "})
+		}
+
+		rawContents = append(rawContents, geminiContent{
+			Role:  role,
+			Parts: parts,
+		})
 	}
 
 	contents := mergeConsecutiveGeminiContents(rawContents)
@@ -319,10 +420,42 @@ func (p *Provider) transformRequest(req *domain.ChatCompletionRequest) geminiReq
 		}
 	}
 
+	var gemTools []geminiTool
+	var funcDecls []geminiFunctionDeclaration
+	for _, t := range req.Tools {
+		if t.Type == "function" {
+			funcDecls = append(funcDecls, geminiFunctionDeclaration{
+				Name:        t.Function.Name,
+				Description: t.Function.Description,
+				Parameters:  t.Function.Parameters,
+			})
+		}
+	}
+	if len(funcDecls) > 0 {
+		gemTools = append(gemTools, geminiTool{FunctionDeclarations: funcDecls})
+	}
+
+	var toolCfg *geminiToolConfig
+	if req.ToolChoice != nil {
+		switch v := req.ToolChoice.(type) {
+		case string:
+			switch strings.ToLower(v) {
+			case "none":
+				toolCfg = &geminiToolConfig{FunctionCallingConfig: &geminiFunctionCallingConfig{Mode: "NONE"}}
+			case "required", "any":
+				toolCfg = &geminiToolConfig{FunctionCallingConfig: &geminiFunctionCallingConfig{Mode: "ANY"}}
+			case "auto":
+				toolCfg = &geminiToolConfig{FunctionCallingConfig: &geminiFunctionCallingConfig{Mode: "AUTO"}}
+			}
+		}
+	}
+
 	return geminiReq{
 		Contents:          contents,
 		SystemInstruction: sysInst,
 		GenerationConfig:  genConfig,
+		Tools:             gemTools,
+		ToolConfig:        toolCfg,
 	}
 }
 
@@ -341,7 +474,7 @@ func mergeConsecutiveGeminiContents(contents []geminiContent) []geminiContent {
 		}
 	}
 
-	if len(merged) > 0 && merged[0].Role != "user" {
+	if len(merged) > 0 && merged[0].Role != "user" && merged[0].Role != "function" {
 		merged[0].Role = "user"
 	}
 
@@ -350,14 +483,31 @@ func mergeConsecutiveGeminiContents(contents []geminiContent) []geminiContent {
 
 func (p *Provider) transformResponse(gResp *geminiResp, requestedModel string) *domain.ChatCompletionResponse {
 	var fullText strings.Builder
+	var toolCalls []domain.ToolCall
 	finishReason := "stop"
 
 	if len(gResp.Candidates) > 0 {
 		cand := gResp.Candidates[0]
 		for _, part := range cand.Content.Parts {
-			fullText.WriteString(part.Text)
+			if part.Text != "" {
+				fullText.WriteString(part.Text)
+			}
+			if part.FunctionCall != nil {
+				rawArgs, _ := json.Marshal(part.FunctionCall.Args)
+				toolCalls = append(toolCalls, domain.ToolCall{
+					ID:   "call_" + uuid.New().String()[:12],
+					Type: "function",
+					Function: domain.FunctionCall{
+						Name:      part.FunctionCall.Name,
+						Arguments: string(rawArgs),
+					},
+				})
+			}
 		}
-		if cand.FinishReason != "" && cand.FinishReason != "STOP" {
+
+		if len(toolCalls) > 0 {
+			finishReason = "tool_calls"
+		} else if cand.FinishReason != "" && cand.FinishReason != "STOP" {
 			finishReason = strings.ToLower(cand.FinishReason)
 		}
 	}
@@ -371,8 +521,9 @@ func (p *Provider) transformResponse(gResp *geminiResp, requestedModel string) *
 			{
 				Index: 0,
 				Message: domain.Message{
-					Role:    domain.RoleAssistant,
-					Content: fullText.String(),
+					Role:      domain.RoleAssistant,
+					Content:   fullText.String(),
+					ToolCalls: toolCalls,
 				},
 				FinishReason: finishReason,
 			},

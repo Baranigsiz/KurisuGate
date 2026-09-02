@@ -182,9 +182,17 @@ func (p *Provider) Stream(ctx context.Context, req *domain.ChatCompletionRequest
 		var oResp ollamaChatResp
 		if err := json.Unmarshal([]byte(line), &oResp); err == nil {
 			var finishReason *string
+			var usage *domain.Usage
 			if oResp.Done {
 				fr := "stop"
 				finishReason = &fr
+				if oResp.PromptEvalCount > 0 || oResp.EvalCount > 0 {
+					usage = &domain.Usage{
+						PromptTokens:     oResp.PromptEvalCount,
+						CompletionTokens: oResp.EvalCount,
+						TotalTokens:      oResp.PromptEvalCount + oResp.EvalCount,
+					}
+				}
 			}
 
 			chunk := &domain.ChatCompletionChunk{
@@ -201,6 +209,7 @@ func (p *Provider) Stream(ctx context.Context, req *domain.ChatCompletionRequest
 						FinishReason: finishReason,
 					},
 				},
+				Usage: usage,
 			}
 
 			if err := onChunk(chunk); err != nil {

@@ -22,7 +22,7 @@ echo "⚡ Installing KurisuGate for $OS/$ARCH..."
 
 LATEST_RELEASE=$(curl -s "https://api.github.com/repos/$REPO/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
 if [ -z "$LATEST_RELEASE" ]; then
-  LATEST_RELEASE="v1.0.0"
+  LATEST_RELEASE="v1.2.0"
 fi
 
 URL="https://github.com/$REPO/releases/download/$LATEST_RELEASE/${BINARY}_${OS}_${ARCH}.tar.gz"
