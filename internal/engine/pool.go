@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -29,9 +30,12 @@ func NewKeyPool(apiKeys []string, cooldownSeconds int) *KeyPool {
 		cooldownSeconds = 60
 	}
 
+	seen := make(map[string]bool)
 	var keyStatuses []*KeyStatus
 	for _, k := range apiKeys {
-		if k != "" {
+		k = strings.TrimSpace(k)
+		if k != "" && !seen[k] {
+			seen[k] = true
 			keyStatuses = append(keyStatuses, &KeyStatus{Key: k})
 		}
 	}
@@ -40,6 +44,16 @@ func NewKeyPool(apiKeys []string, cooldownSeconds int) *KeyPool {
 		keys:     keyStatuses,
 		cooldown: time.Duration(cooldownSeconds) * time.Second,
 	}
+}
+
+// NewKeyPoolFromConfig creates a pool accepting either a single key or multiple keys
+func NewKeyPoolFromConfig(primaryKey string, keys []string, cooldownSeconds int) *KeyPool {
+	var allKeys []string
+	if primaryKey != "" {
+		allKeys = append(allKeys, primaryKey)
+	}
+	allKeys = append(allKeys, keys...)
+	return NewKeyPool(allKeys, cooldownSeconds)
 }
 
 // NextKey selects an available API key using Round-Robin, skipping cooling keys
@@ -55,7 +69,7 @@ func (p *KeyPool) NextKey() (string, bool) {
 	}
 
 	now := time.Now()
-	startIdx := int(p.cursor.Add(1) % uint64(len(p.keys)))
+	startIdx := int((p.cursor.Add(1) - 1) % uint64(len(p.keys)))
 
 	// Check if key at cursor is available
 	for i := 0; i < len(p.keys); i++ {

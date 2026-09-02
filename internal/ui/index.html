@@ -6,41 +6,52 @@
   <title>KurisuGate • Universal AI Gateway & Semantic Cache</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #0b0c10;
-      --card-bg: #14161d;
-      --card-border: #232733;
-      --primary: #e63946;
-      --primary-glow: rgba(230, 57, 70, 0.25);
+      --bg: #08090d;
+      --bg-surface: #0f1219;
+      --card-bg: #141824;
+      --card-border: #202738;
+      --card-border-hover: #323d57;
+      --primary: #ff2a5f;
+      --primary-glow: rgba(255, 42, 95, 0.35);
       --accent: #00f5d4;
-      --accent-glow: rgba(0, 245, 212, 0.2);
-      --secondary: #457b9d;
-      --success: #52b788;
-      --warning: #f4a261;
-      --text: #f8f9fa;
-      --text-muted: #8d99ae;
-      --font-main: 'Outfit', -apple-system, sans-serif;
+      --accent-glow: rgba(0, 245, 212, 0.25);
+      --azure: #3a86ff;
+      --azure-glow: rgba(58, 134, 255, 0.25);
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --font-main: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
       --font-mono: 'JetBrains Mono', monospace;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    
     body {
       background: var(--bg);
+      background-image: 
+        radial-gradient(at 0% 0%, rgba(255, 42, 95, 0.08) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(0, 245, 212, 0.06) 0px, transparent 50%);
       color: var(--text);
       font-family: var(--font-main);
       min-height: 100vh;
       display: flex;
       flex-direction: column;
+      overflow-x: hidden;
     }
 
-    /* Navbar */
+    /* Header */
     header {
-      background: rgba(20, 22, 29, 0.85);
-      backdrop-filter: blur(12px);
+      background: rgba(15, 18, 25, 0.85);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
       border-bottom: 1px solid var(--card-border);
-      padding: 1rem 2rem;
+      padding: 0.85rem 2rem;
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -52,88 +63,95 @@
     .brand {
       display: flex;
       align-items: center;
-      gap: 0.75rem;
-      font-size: 1.35rem;
+      gap: 0.85rem;
+      font-size: 1.4rem;
       font-weight: 800;
       letter-spacing: -0.5px;
+      cursor: pointer;
     }
     .brand-icon {
       background: linear-gradient(135deg, var(--primary), #ff758f);
       color: white;
-      width: 36px;
-      height: 36px;
+      width: 38px;
+      height: 38px;
       border-radius: 10px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 1.2rem;
-      box-shadow: 0 0 15px var(--primary-glow);
+      font-size: 1.25rem;
+      box-shadow: 0 0 20px var(--primary-glow);
     }
     .brand span { color: var(--primary); }
 
     .nav-tabs {
       display: flex;
-      gap: 0.5rem;
-      background: #0d0f14;
+      gap: 0.4rem;
+      background: #090b10;
       padding: 0.35rem;
-      border-radius: 12px;
+      border-radius: 14px;
       border: 1px solid var(--card-border);
     }
     .tab-btn {
       background: transparent;
       border: none;
       color: var(--text-muted);
-      padding: 0.5rem 1rem;
-      border-radius: 8px;
+      padding: 0.55rem 1.1rem;
+      border-radius: 9px;
       cursor: pointer;
       font-family: var(--font-main);
       font-weight: 600;
-      font-size: 0.9rem;
-      transition: all 0.2s;
+      font-size: 0.88rem;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
     }
-    .tab-btn.active, .tab-btn:hover {
-      background: var(--card-bg);
+    .tab-btn:hover {
+      background: rgba(255, 255, 255, 0.05);
       color: var(--text);
-      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
     }
-    .tab-btn.active { color: var(--accent); }
+    .tab-btn.active {
+      background: var(--card-bg);
+      color: var(--accent);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(0, 245, 212, 0.2);
+    }
 
     .status-badge {
       display: flex;
       align-items: center;
       gap: 0.5rem;
-      font-size: 0.85rem;
-      font-weight: 600;
+      font-size: 0.82rem;
+      font-weight: 700;
       padding: 0.4rem 0.85rem;
       border-radius: 20px;
-      background: rgba(82, 183, 136, 0.15);
+      background: rgba(16, 185, 129, 0.12);
       color: var(--success);
-      border: 1px solid rgba(82, 183, 136, 0.3);
+      border: 1px solid rgba(16, 185, 129, 0.3);
     }
     .status-dot {
       width: 8px;
       height: 8px;
       background: var(--success);
       border-radius: 50%;
-      box-shadow: 0 0 8px var(--success);
+      box-shadow: 0 0 10px var(--success);
       animation: pulse 2s infinite;
     }
-    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+    @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.85); } }
 
     /* Layout */
     main {
       flex: 1;
-      max-width: 1400px;
+      max-width: 1440px;
       width: 100%;
       margin: 0 auto;
       padding: 2rem;
     }
 
     .tab-content { display: none; }
-    .tab-content.active { display: block; animation: fadeIn 0.3s ease; }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+    .tab-content.active { display: block; animation: fadeIn 0.25s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
-    /* KPI Cards */
+    /* Cards & KPIs */
     .grid-kpi {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -143,28 +161,30 @@
     .card {
       background: var(--card-bg);
       border: 1px solid var(--card-border);
-      border-radius: 16px;
+      border-radius: 18px;
       padding: 1.5rem;
       position: relative;
       overflow: hidden;
-      transition: transform 0.2s, border-color 0.2s;
+      transition: all 0.25s;
     }
     .card:hover {
       transform: translateY(-2px);
-      border-color: #3b4256;
+      border-color: var(--card-border-hover);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
     }
     .card-label {
-      font-size: 0.85rem;
-      font-weight: 600;
+      font-size: 0.82rem;
+      font-weight: 700;
       text-transform: uppercase;
       color: var(--text-muted);
-      letter-spacing: 0.5px;
-      margin-bottom: 0.5rem;
+      letter-spacing: 0.6px;
+      margin-bottom: 0.6rem;
       display: flex;
       justify-content: space-between;
+      align-items: center;
     }
     .card-val {
-      font-size: 2.1rem;
+      font-size: 2.2rem;
       font-weight: 800;
       font-family: var(--font-mono);
       letter-spacing: -1px;
@@ -173,15 +193,42 @@
       font-size: 0.85rem;
       color: var(--text-muted);
       margin-top: 0.5rem;
+      font-weight: 500;
     }
 
-    /* Live Table */
-    .table-container {
+    /* Provider Bars */
+    .provider-bar-container {
       background: var(--card-bg);
       border: 1px solid var(--card-border);
       border-radius: 16px;
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 2rem;
+    }
+    .provider-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-top: 0.75rem;
+    }
+    .pill {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--card-border);
+      padding: 0.4rem 0.85rem;
+      border-radius: 10px;
+      font-size: 0.82rem;
+      font-family: var(--font-mono);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    /* Tables */
+    .table-container {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 18px;
       overflow: hidden;
-      margin-top: 1.5rem;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.3);
     }
     .table-header {
       padding: 1.25rem 1.5rem;
@@ -190,16 +237,16 @@
       justify-content: space-between;
       align-items: center;
     }
-    .table-title { font-size: 1.1rem; font-weight: 700; }
+    .table-title { font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; }
     table { width: 100%; border-collapse: collapse; text-align: left; }
     th {
-      background: #101218;
-      padding: 0.9rem 1.25rem;
-      font-size: 0.8rem;
+      background: #0d1017;
+      padding: 0.95rem 1.25rem;
+      font-size: 0.78rem;
       text-transform: uppercase;
       color: var(--text-muted);
-      font-weight: 600;
-      letter-spacing: 0.5px;
+      font-weight: 700;
+      letter-spacing: 0.6px;
     }
     td {
       padding: 1rem 1.25rem;
@@ -209,19 +256,43 @@
     }
     tr:hover td { background: rgba(255,255,255,0.02); }
 
+    /* Badges */
     .badge {
-      display: inline-block;
-      padding: 0.25rem 0.6rem;
+      display: inline-flex;
+      align-items: center;
+      padding: 0.25rem 0.65rem;
       border-radius: 6px;
       font-size: 0.75rem;
       font-weight: 700;
+      letter-spacing: 0.3px;
     }
-    .badge-200 { background: rgba(82,183,136,0.15); color: var(--success); }
-    .badge-err { background: rgba(230,57,70,0.15); color: var(--primary); }
-    .badge-exact { background: rgba(0,245,212,0.15); color: var(--accent); }
-    .badge-semantic { background: rgba(69,123,157,0.2); color: #8ecae6; }
+    .badge-200 { background: rgba(16, 185, 129, 0.15); color: var(--success); }
+    .badge-err { background: rgba(239, 68, 68, 0.18); color: var(--danger); }
+    .badge-exact { background: rgba(0, 245, 212, 0.15); color: var(--accent); }
+    .badge-semantic { background: rgba(58, 134, 255, 0.2); color: #93c5fd; }
+    .badge-model { background: rgba(255, 255, 255, 0.08); color: var(--text); }
+    .badge-active { background: rgba(16, 185, 129, 0.15); color: var(--success); }
+    .badge-disabled { background: rgba(239, 68, 68, 0.15); color: var(--danger); }
 
-    /* Playground / Duel Mode */
+    /* Budget Progress Bar */
+    .progress-track {
+      width: 100%;
+      height: 7px;
+      background: #090b10;
+      border-radius: 10px;
+      overflow: hidden;
+      margin-top: 6px;
+    }
+    .progress-fill {
+      height: 100%;
+      background: var(--success);
+      border-radius: 10px;
+      transition: width 0.4s ease;
+    }
+    .progress-fill.warning { background: var(--warning); }
+    .progress-fill.danger { background: var(--danger); }
+
+    /* Playground / Duel Grid */
     .duel-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -231,38 +302,40 @@
     .prompt-box {
       width: 100%;
       height: 120px;
-      background: #0d0f14;
+      background: #090b10;
       border: 1px solid var(--card-border);
       border-radius: 12px;
       padding: 1rem;
       color: white;
       font-family: var(--font-main);
-      font-size: 1rem;
+      font-size: 0.98rem;
       resize: vertical;
       outline: none;
-      margin-bottom: 1rem;
+      transition: border-color 0.2s;
     }
-    .prompt-box:focus { border-color: var(--accent); }
+    .prompt-box:focus { border-color: var(--accent); box-shadow: 0 0 15px var(--accent-glow); }
+
     .btn-run {
       background: linear-gradient(135deg, var(--primary), #d90429);
       color: white;
       border: none;
-      padding: 0.85rem 1.75rem;
+      padding: 0.8rem 1.6rem;
       border-radius: 10px;
       font-weight: 700;
-      font-size: 1rem;
+      font-size: 0.95rem;
+      font-family: var(--font-main);
       cursor: pointer;
       display: inline-flex;
       align-items: center;
       gap: 0.5rem;
       transition: all 0.2s;
     }
-    .btn-run:hover { opacity: 0.9; transform: scale(1.02); box-shadow: 0 0 20px var(--primary-glow); }
+    .btn-run:hover { opacity: 0.92; transform: scale(1.02); box-shadow: 0 0 25px var(--primary-glow); }
 
     .model-card {
       background: var(--card-bg);
       border: 1px solid var(--card-border);
-      border-radius: 16px;
+      border-radius: 18px;
       padding: 1.25rem;
       display: flex;
       flex-direction: column;
@@ -274,25 +347,26 @@
       margin-bottom: 1rem;
     }
     .model-select {
-      background: #0d0f14;
+      background: #090b10;
       border: 1px solid var(--card-border);
       color: white;
       padding: 0.5rem 0.75rem;
       border-radius: 8px;
       font-family: var(--font-mono);
-      font-size: 0.9rem;
+      font-size: 0.88rem;
       outline: none;
     }
     .output-box {
       flex: 1;
-      min-height: 250px;
-      background: #0d0f14;
+      min-height: 260px;
+      max-height: 480px;
+      background: #090b10;
       border: 1px solid var(--card-border);
-      border-radius: 10px;
-      padding: 1rem;
+      border-radius: 12px;
+      padding: 1.1rem;
       font-family: var(--font-mono);
       font-size: 0.88rem;
-      line-height: 1.6;
+      line-height: 1.65;
       white-space: pre-wrap;
       overflow-y: auto;
     }
@@ -301,7 +375,7 @@
       justify-content: space-between;
       font-size: 0.8rem;
       color: var(--text-muted);
-      margin-top: 0.75rem;
+      margin-top: 0.85rem;
       font-family: var(--font-mono);
     }
 
@@ -309,29 +383,53 @@
       text-align: center;
       padding: 2rem;
       font-size: 0.85rem;
-      color: var(--text-muted);
+      color: var(--text-dim);
       border-top: 1px solid var(--card-border);
+      margin-top: auto;
+    }
+
+    /* Key copy button */
+    .btn-copy {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid var(--card-border);
+      color: var(--text-muted);
+      padding: 0.2rem 0.5rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.75rem;
+      font-family: var(--font-mono);
+      transition: all 0.2s;
+    }
+    .btn-copy:hover { color: var(--accent); border-color: var(--accent); }
+
+    @media (max-width: 900px) {
+      .duel-grid { grid-template-columns: 1fr; }
+      header { flex-direction: column; gap: 1rem; padding: 1rem; }
     }
   </style>
 </head>
 <body>
 
   <header>
-    <div class="brand">
+    <div class="brand" onclick="switchTab('dashboard')">
       <div class="brand-icon">⚡</div>
       <div>Kurisu<span>Gate</span></div>
     </div>
 
     <div class="nav-tabs">
-      <button class="tab-btn active" onclick="switchTab('dashboard')">📊 Live Dashboard</button>
-      <button class="tab-btn" onclick="switchTab('playground')">⚔️ Side-by-Side Playground</button>
-      <button class="tab-btn" onclick="switchTab('guard')">🛡️ Privacy Guard</button>
-      <button class="tab-btn" onclick="switchTab('models')">🧩 Models & Aliases</button>
+      <button class="tab-btn active" onclick="switchTab('dashboard', this)">📊 Dashboard</button>
+      <button class="tab-btn" onclick="switchTab('virtual-keys', this)">🔑 Virtual Keys</button>
+      <button class="tab-btn" onclick="switchTab('playground', this)">⚔️ Duel & Playground</button>
+      <button class="tab-btn" onclick="switchTab('guard', this)">🛡️ Privacy Guard</button>
+      <button class="tab-btn" onclick="switchTab('models', this)">🧩 Models & Routing</button>
     </div>
 
-    <div class="status-badge">
-      <div class="status-dot"></div>
-      <span id="gateway-status">ONLINE (8080)</span>
+    <div style="display: flex; align-items: center; gap: 0.75rem;">
+      <input id="api-key-input" type="password" placeholder="Master / Virtual Key" style="background: #090b10; border: 1px solid var(--card-border); color: white; padding: 0.45rem 0.85rem; border-radius: 9px; font-size: 0.82rem; font-family: var(--font-mono); outline: none; width: 170px;" onchange="saveKey(this.value)">
+      <div class="status-badge">
+        <div class="status-dot"></div>
+        <span id="gateway-status">ONLINE</span>
+      </div>
     </div>
   </header>
 
@@ -342,7 +440,7 @@
         <div class="card">
           <div class="card-label">Total Requests <span>🚀</span></div>
           <div class="card-val" id="kpi-total">0</div>
-          <div class="card-sub" id="kpi-success-rate">Success: 100%</div>
+          <div class="card-sub" id="kpi-success-rate">Success Rate: 100%</div>
         </div>
         <div class="card">
           <div class="card-label">Cache Hit Ratio <span>⚡</span></div>
@@ -357,14 +455,23 @@
         <div class="card">
           <div class="card-label">Avg Latency <span>⏱️</span></div>
           <div class="card-val" id="kpi-latency">0.0 ms</div>
-          <div class="card-sub" id="kpi-tokens">Tokens: 0</div>
+          <div class="card-sub" id="kpi-tokens">Tokens Processed: 0</div>
         </div>
       </div>
 
+      <!-- Active Provider Distribution -->
+      <div class="provider-bar-container">
+        <div class="card-label">Active Provider Traffic Distribution <span>🌐</span></div>
+        <div class="provider-pills" id="provider-pills-list">
+          <div class="pill" style="color: var(--text-dim);">No requests logged yet</div>
+        </div>
+      </div>
+
+      <!-- Realtime Logs Table -->
       <div class="table-container">
         <div class="table-header">
-          <div class="table-title">📡 Real-Time Traffic & Event Logs</div>
-          <button class="tab-btn" onclick="fetchStats()">🔄 Refresh</button>
+          <div class="table-title">📡 Real-Time Traffic & Event Stream</div>
+          <button class="tab-btn" onclick="fetchStats()" style="padding: 0.35rem 0.85rem; font-size: 0.82rem;">🔄 Refresh</button>
         </div>
         <table>
           <thead>
@@ -375,22 +482,66 @@
               <th>Provider</th>
               <th>Cache</th>
               <th>Latency</th>
-              <th>Cost Saved</th>
+              <th>Cost Impact</th>
             </tr>
           </thead>
           <tbody id="logs-tbody">
-            <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">Waiting for incoming requests...</td></tr>
+            <tr><td colspan="7" style="text-align: center; color: var(--text-dim); padding: 2.5rem;">Waiting for incoming traffic...</td></tr>
           </tbody>
         </table>
       </div>
     </div>
 
-    <!-- TAB 2: SIDE-BY-SIDE PLAYGROUND -->
+    <!-- TAB 2: VIRTUAL KEYS & BUDGET MANAGEMENT -->
+    <div id="tab-virtual-keys" class="tab-content">
+      <div class="card" style="margin-bottom: 1.5rem;">
+        <div class="card-label">🔑 Virtual API Keys & Quota Controls</div>
+        <p style="color: var(--text-muted); font-size: 0.92rem; line-height: 1.6;">
+          Virtual Keys allow allocating dedicated monthly budgets, strict model access whitelists, and custom RPM limits for teams, clients, and microservices.
+        </p>
+      </div>
+
+      <div class="table-container">
+        <div class="table-header">
+          <div class="table-title">👥 Registered Virtual Keys</div>
+          <button class="tab-btn" onclick="fetchVirtualKeys()" style="padding: 0.35rem 0.85rem; font-size: 0.82rem;">🔄 Reload Keys</button>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Name & Key</th>
+              <th>Monthly Budget</th>
+              <th>Current Spend</th>
+              <th>Budget Utilization</th>
+              <th>Allowed Models</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="vkeys-tbody">
+            <tr><td colspan="7" style="text-align: center; color: var(--text-dim); padding: 2.5rem;">Loading virtual keys...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TAB 3: SIDE-BY-SIDE PLAYGROUND & DUEL -->
     <div id="tab-playground" class="tab-content">
       <div class="card" style="margin-bottom: 1.5rem;">
-        <div class="card-label">Prompt Input</div>
-        <textarea id="duel-prompt" class="prompt-box" placeholder="Ask a question to test multiple models simultaneously (e.g. 'Explain asynchronous programming in Go with an example')..."></textarea>
-        <button class="btn-run" onclick="runDuel()">⚡ Run Side-by-Side Duel</button>
+        <div class="card-label">Prompt & Duel Parameters <span>⚡</span></div>
+        <textarea id="duel-prompt" class="prompt-box" placeholder="Ask a question or enter a prompt to benchmark two models simultaneously (e.g. 'Write a high-performance LRU cache in Go with thread safety')..."></textarea>
+        
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-top: 0.5rem;">
+          <div style="display: flex; gap: 1rem; align-items: center;">
+            <label style="font-size: 0.85rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.4rem; cursor: pointer;">
+              <input type="checkbox" id="stream-checkbox" checked style="accent-color: var(--accent);"> Stream Response
+            </label>
+            <label style="font-size: 0.85rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.4rem; cursor: pointer;">
+              <input type="checkbox" id="disable-cache-checkbox" style="accent-color: var(--primary);"> Bypass Cache
+            </label>
+          </div>
+          <button class="btn-run" onclick="runDuel()">⚡ Run Side-by-Side Duel</button>
+        </div>
       </div>
 
       <div class="duel-grid">
@@ -402,6 +553,8 @@
               <option value="fast">fast (gpt-4o-mini)</option>
               <option value="claude">claude (claude-3-5-sonnet)</option>
               <option value="gemini">gemini (gemini-2.0-flash)</option>
+              <option value="cheapest">cheapest (auto-cost)</option>
+              <option value="fastest">fastest (auto-speed)</option>
             </select>
           </div>
           <div id="output-a" class="output-box">Waiting for prompt execution...</div>
@@ -420,6 +573,8 @@
               <option value="gemini">gemini (gemini-2.0-flash)</option>
               <option value="smart">smart (gpt-4o)</option>
               <option value="fast">fast (gpt-4o-mini)</option>
+              <option value="cheapest">cheapest (auto-cost)</option>
+              <option value="fastest">fastest (auto-speed)</option>
             </select>
           </div>
           <div id="output-b" class="output-box">Waiting for prompt execution...</div>
@@ -432,40 +587,41 @@
       </div>
     </div>
 
-    <!-- TAB 3: PRIVACY GUARD -->
+    <!-- TAB 4: PRIVACY GUARD & JSON REPAIR -->
     <div id="tab-guard" class="tab-content">
-      <div class="card">
-        <div class="card-label">🛡️ PII & Secret Redaction Interactive Tester</div>
-        <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 1rem;">
-          KurisuGate intercepts outgoing prompts and masks sensitive API keys, credit cards, emails, and passwords before they reach external LLMs.
+      <div class="card" style="margin-bottom: 1.5rem;">
+        <div class="card-label">🛡️ Privacy Guard & Secret Masking Simulator</div>
+        <p style="color: var(--text-muted); font-size: 0.92rem; margin-bottom: 1rem; line-height: 1.5;">
+          KurisuGate intercepts outgoing prompts and masks API keys, AWS credentials, credit cards, emails, and SSNs before they reach external LLMs.
         </p>
-        <textarea id="guard-input" class="prompt-box" style="height: 100px;">Hey assistant, my email is admin@company.com and my OpenAI key is sk-proj-1234567890abcdef1234567890abcdef. Please summarize this document.</textarea>
-        <button class="btn-run" onclick="testGuard()">🔍 Test Redaction Engine</button>
+        <textarea id="guard-input" class="prompt-box" style="height: 100px;">Hey assistant, my email is admin@company.com and my OpenAI key is sk-proj-1234567890abcdef1234567890abcdef. Also my credit card is 4111-2222-3333-4444. Please redact this.</textarea>
+        <button class="btn-run" onclick="testGuard()">🔍 Test Privacy Redaction</button>
 
         <div style="margin-top: 1.5rem;">
-          <div class="card-label">Masked Output Sent to Upstream LLM:</div>
-          <div id="guard-output" class="output-box" style="min-height: 120px;">Click 'Test Redaction Engine' to view results...</div>
+          <div class="card-label">Sanitized Payload Sent Upstream:</div>
+          <div id="guard-output" class="output-box" style="min-height: 120px;">Click 'Test Privacy Redaction' to view sanitized prompt...</div>
         </div>
       </div>
     </div>
 
-    <!-- TAB 4: MODELS & ALIASES -->
+    <!-- TAB 5: MODELS & ROUTING -->
     <div id="tab-models" class="tab-content">
-      <div class="table-container" style="margin-top: 0;">
+      <div class="table-container">
         <div class="table-header">
-          <div class="table-title">🧩 Accessible Models & Smart Aliases</div>
+          <div class="table-title">🧩 Accessible Models & Smart Routing Aliases</div>
+          <button class="tab-btn" onclick="fetchModels()" style="padding: 0.35rem 0.85rem; font-size: 0.82rem;">🔄 Reload Models</button>
         </div>
         <table>
           <thead>
             <tr>
-              <th>Alias / Model ID</th>
+              <th>Model Identifier</th>
               <th>Provider</th>
-              <th>Type</th>
+              <th>Classification</th>
               <th>Status</th>
             </tr>
           </thead>
           <tbody id="models-tbody">
-            <tr><td colspan="4" style="text-align: center; color: var(--text-muted);">Loading models...</td></tr>
+            <tr><td colspan="4" style="text-align: center; color: var(--text-dim); padding: 2.5rem;">Loading models...</td></tr>
           </tbody>
         </table>
       </div>
@@ -473,23 +629,44 @@
   </main>
 
   <footer>
-    KurisuGate v1.0.0 • Universal AI Gateway & Semantic Cache in Go • Built with ❤️ by <a href="https://github.com/Baranigsiz" style="color: var(--accent); text-decoration: none;">Baran Igsiz</a>
+    KurisuGate v1.0.0 • Universal AI Gateway & Semantic Cache in Go • Built with ❤️ by <a href="https://github.com/Baranigsiz" target="_blank" style="color: var(--accent); text-decoration: none;">Baran Igsiz</a>
   </footer>
 
   <script>
-    function switchTab(tabId) {
+    function saveKey(val) {
+      localStorage.setItem('kurisu_master_key', val.trim());
+    }
+
+    function getHeaders() {
+      const headers = { 'Content-Type': 'application/json' };
+      const key = localStorage.getItem('kurisu_master_key');
+      if (key) {
+        headers['Authorization'] = 'Bearer ' + key;
+      }
+      return headers;
+    }
+
+    function switchTab(tabId, btn) {
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
       document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
 
-      event.target.classList.add('active');
-      document.getElementById('tab-' + tabId).classList.add('active');
+      if (btn) {
+        btn.classList.add('active');
+      } else {
+        const matchingBtn = document.querySelector(`.tab-btn[onclick*="${tabId}"]`);
+        if (matchingBtn) matchingBtn.classList.add('active');
+      }
+
+      const content = document.getElementById('tab-' + tabId);
+      if (content) content.classList.add('active');
 
       if (tabId === 'models') fetchModels();
+      if (tabId === 'virtual-keys') fetchVirtualKeys();
     }
 
     async function fetchStats() {
       try {
-        const res = await fetch('/stats');
+        const res = await fetch('/stats', { headers: getHeaders() });
         if (!res.ok) return;
         const data = await res.json();
 
@@ -501,27 +678,41 @@
         document.getElementById('kpi-incurred').innerText = `Incurred: $${(data.total_cost_incurred || 0).toFixed(4)}`;
         document.getElementById('kpi-tokens').innerText = `Tokens: ${data.total_tokens || 0}`;
 
+        // Provider Distribution Pills
+        const pillsList = document.getElementById('provider-pills-list');
+        if (data.provider_counts && Object.keys(data.provider_counts).length > 0) {
+          pillsList.innerHTML = Object.entries(data.provider_counts).map(([prov, count]) => `
+            <div class="pill">
+              <span style="color: var(--accent); font-weight: 700;">${prov.toUpperCase()}</span>
+              <span>${count} reqs</span>
+            </div>
+          `).join('');
+        }
+
+        // Live logs table
         const tbody = document.getElementById('logs-tbody');
         if (data.recent_requests && data.recent_requests.length > 0) {
-          tbody.innerHTML = data.recent_requests.slice().reverse().slice(0, 10).map(log => {
+          tbody.innerHTML = data.recent_requests.slice().reverse().slice(0, 15).map(log => {
             const time = new Date(log.timestamp).toLocaleTimeString();
             const statusBadge = log.status_code >= 200 && log.status_code < 300 
-              ? `<span class="badge badge-200">${log.status_code}</span>` 
-              : `<span class="badge badge-err">${log.status_code}</span>`;
+              ? `<span class="badge badge-200">${log.status_code} OK</span>` 
+              : `<span class="badge badge-err">${log.status_code} ERR</span>`;
             const cacheBadge = log.cached 
-              ? `<span class="badge ${log.cache_type === 'semantic' ? 'badge-semantic' : 'badge-exact'}">${log.cache_type ? log.cache_type.toUpperCase() : 'EXACT'}</span>` 
-              : '-';
-            const costSaved = log.cost_saved > 0 ? `+$${log.cost_saved.toFixed(4)}` : '-';
+              ? `<span class="badge ${log.cache_type && log.cache_type.includes('semantic') ? 'badge-semantic' : 'badge-exact'}">${log.cache_type ? log.cache_type.toUpperCase() : 'EXACT'}</span>` 
+              : '<span style="color: var(--text-dim);">-</span>';
+            const costImpact = log.cost_saved > 0 
+              ? `<span style="color: var(--success); font-weight: 700;">+$${log.cost_saved.toFixed(4)} saved</span>` 
+              : (log.cost_incurred > 0 ? `<span style="color: var(--text-dim);">$${log.cost_incurred.toFixed(4)}</span>` : '-');
             const latency = log.duration ? (log.duration / 1000000).toFixed(1) + ' ms' : '-';
 
             return `<tr>
               <td>${time}</td>
               <td>${statusBadge}</td>
               <td><strong>${log.model}</strong></td>
-              <td>${log.provider}</td>
+              <td><span class="badge badge-model">${log.provider}</span></td>
               <td>${cacheBadge}</td>
               <td>${latency}</td>
-              <td style="color: var(--success); font-weight: bold;">${costSaved}</td>
+              <td>${costImpact}</td>
             </tr>`;
           }).join('');
         }
@@ -530,18 +721,89 @@
       }
     }
 
+    async function fetchVirtualKeys() {
+      try {
+        const res = await fetch('/api/virtual-keys', { headers: getHeaders() });
+        if (!res.ok) return;
+        const data = await res.json();
+        const tbody = document.getElementById('vkeys-tbody');
+        const keys = data.virtual_keys || [];
+
+        if (keys.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--text-dim); padding: 2.5rem;">No virtual keys configured in config.yaml</td></tr>`;
+          return;
+        }
+
+        tbody.innerHTML = keys.map(k => {
+          const budget = k.monthly_budget_usd > 0 ? `$${k.monthly_budget_usd.toFixed(2)}` : 'Unlimited';
+          const spent = `$${(k.spent_usd || 0).toFixed(4)}`;
+          const pct = k.monthly_budget_usd > 0 ? Math.min(100, ((k.spent_usd || 0) / k.monthly_budget_usd) * 100) : 0;
+          let fillClass = '';
+          if (pct > 90) fillClass = 'danger';
+          else if (pct > 70) fillClass = 'warning';
+
+          const models = k.allowed_models && k.allowed_models.length > 0 
+            ? k.allowed_models.map(m => `<span class="badge badge-model">${m}</span>`).join(' ')
+            : '<span style="color: var(--text-dim);">All Models</span>';
+
+          const status = k.enabled 
+            ? `<span class="badge badge-active">ACTIVE</span>` 
+            : `<span class="badge badge-disabled">DISABLED</span>`;
+
+          const maskedKey = k.key.length > 12 ? k.key.substring(0, 8) + '...' + k.key.substring(k.key.length - 4) : k.key;
+
+          return `<tr>
+            <td>
+              <div style="font-weight: 700; color: var(--text);">${k.name || 'Unnamed Key'}</div>
+              <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 4px;">
+                <code style="font-size: 0.78rem; color: var(--accent);">${maskedKey}</code>
+                <button class="btn-copy" onclick="copyToClipboard('${k.key}')">Copy</button>
+              </div>
+            </td>
+            <td><strong>${budget}</strong></td>
+            <td style="color: var(--text);">${spent}</td>
+            <td style="min-width: 140px;">
+              <div style="font-size: 0.78rem; color: var(--text-muted);">${pct.toFixed(1)}%</div>
+              <div class="progress-track">
+                <div class="progress-fill ${fillClass}" style="width: ${pct}%;"></div>
+              </div>
+            </td>
+            <td>${models}</td>
+            <td>${status}</td>
+            <td>
+              <button class="btn-copy" onclick="useKeyInPlayground('${k.key}')">Use Key</button>
+            </td>
+          </tr>`;
+        }).join('');
+      } catch (e) {
+        console.error("Virtual keys error:", e);
+      }
+    }
+
+    function copyToClipboard(text) {
+      navigator.clipboard.writeText(text).then(() => {
+        alert("API Key copied to clipboard!");
+      });
+    }
+
+    function useKeyInPlayground(key) {
+      document.getElementById('api-key-input').value = key;
+      saveKey(key);
+      switchTab('playground');
+    }
+
     async function fetchModels() {
       try {
-        const res = await fetch('/v1/models');
+        const res = await fetch('/v1/models', { headers: getHeaders() });
         if (!res.ok) return;
         const data = await res.json();
         const tbody = document.getElementById('models-tbody');
         tbody.innerHTML = data.data.map(m => `
           <tr>
             <td><strong>${m.id}</strong></td>
-            <td>${m.provider || 'unknown'}</td>
-            <td>${m.is_alias ? '<span class="badge badge-semantic">ALIAS</span>' : '<span class="badge badge-exact">MODEL</span>'}</td>
-            <td><span class="badge badge-200">ACTIVE</span></td>
+            <td><span class="badge badge-model">${m.provider || 'default'}</span></td>
+            <td>${m.is_alias ? '<span class="badge badge-semantic">SMART ALIAS</span>' : '<span class="badge badge-exact">CONCRETE MODEL</span>'}</td>
+            <td><span class="badge badge-200">AVAILABLE</span></td>
           </tr>
         `).join('');
       } catch (e) {
@@ -551,29 +813,63 @@
 
     async function queryModel(model, prompt, outputEl, metaElPrefix) {
       const start = performance.now();
-      outputEl.innerText = "⏳ Generating completion...";
+      outputEl.innerText = "⏳ Generating response...";
+      const stream = document.getElementById('stream-checkbox').checked;
+      const disableCache = document.getElementById('disable-cache-checkbox').checked;
 
       try {
         const res = await fetch('/v1/chat/completions', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getHeaders(),
           body: JSON.stringify({
             model: model,
+            stream: stream,
+            disable_cache: disableCache,
             messages: [{ role: 'user', content: prompt }]
           })
         });
 
-        const elapsed = (performance.now() - start).toFixed(0);
-        const data = await res.json();
+        if (stream && res.ok) {
+          outputEl.innerText = "";
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let totalText = "";
 
-        if (data.choices && data.choices.length > 0) {
-          outputEl.innerText = data.choices[0].message.content;
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const chunk = decoder.decode(value);
+            const lines = chunk.split('\n');
+            for (const line of lines) {
+              if (line.startsWith('data: ') && !line.includes('[DONE]')) {
+                try {
+                  const json = JSON.parse(line.substring(6));
+                  if (json.choices && json.choices[0].delta.content) {
+                    totalText += json.choices[0].delta.content;
+                    outputEl.innerText = totalText;
+                  }
+                } catch (err) {}
+              }
+            }
+          }
+
+          const elapsed = (performance.now() - start).toFixed(0);
           document.getElementById(metaElPrefix + '-latency').innerText = `Latency: ${elapsed} ms`;
-          const cached = res.headers.get('X-Kurisu-Cached') === 'true';
-          document.getElementById(metaElPrefix + '-cached').innerText = `Cache: ${cached ? 'HIT' : 'MISS'}`;
-          document.getElementById(metaElPrefix + '-tokens').innerText = `Tokens: ${data.usage ? data.usage.total_tokens : '-'}`;
+          document.getElementById(metaElPrefix + '-cached').innerText = `Stream: LIVE`;
+          document.getElementById(metaElPrefix + '-tokens').innerText = `Chars: ${totalText.length}`;
         } else {
-          outputEl.innerText = "Error: " + JSON.stringify(data.error || data);
+          const elapsed = (performance.now() - start).toFixed(0);
+          const data = await res.json();
+
+          if (data.choices && data.choices.length > 0) {
+            outputEl.innerText = data.choices[0].message.content;
+            document.getElementById(metaElPrefix + '-latency').innerText = `Latency: ${elapsed} ms`;
+            const cached = res.headers.get('X-Kurisu-Cached') === 'true';
+            document.getElementById(metaElPrefix + '-cached').innerText = `Cache: ${cached ? 'HIT' : 'MISS'}`;
+            document.getElementById(metaElPrefix + '-tokens').innerText = `Tokens: ${data.usage ? data.usage.total_tokens : '-'}`;
+          } else {
+            outputEl.innerText = "Error (" + res.status + "): " + JSON.stringify(data.error || data, null, 2);
+          }
         }
       } catch (e) {
         outputEl.innerText = "Connection failed: " + e.message;
@@ -595,14 +891,26 @@
     function testGuard() {
       const text = document.getElementById('guard-input').value;
       let cleaned = text
-        .replace(/sk-[a-zA-Z0-9_-]{20,}/g, '[REDACTED_OPENAI_KEY]')
-        .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[REDACTED_EMAIL]')
-        .replace(/\b(?:\d{4}[- ]?){3}\d{4}\b/g, '[REDACTED_CREDIT_CARD]');
+        .replace(/(?:sk-[a-zA-Z0-9_-]{20,}|sk-proj-[a-zA-Z0-9_-]{20,})/gi, '[REDACTED_OPENAI_KEY]')
+        .replace(/sk-ant-[a-zA-Z0-9_-]{20,}/gi, '[REDACTED_ANTHROPIC_KEY]')
+        .replace(/(?:AKIA|ABIA|ACCA|ASIA)[0-9A-Z]{16}/g, '[REDACTED_AWS_KEY]')
+        .replace(/gh[pousr]_[A-Za-z0-9_]{36,255}/gi, '[REDACTED_GITHUB_KEY]')
+        .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/gi, '[REDACTED_EMAIL]')
+        .replace(/\b(?:\d{4}[- ]?){3}\d{4}\b/g, '[REDACTED_CREDIT_CARD]')
+        .replace(/\b\d{3}-\d{2}-\d{4}\b/g, '[REDACTED_SSN]')
+        .replace(/\b(?:\+?\d{1,3}[- ]?)?\(?\d{3}\)?[- ]?\d{3}[- ]?\d{4}\b/g, '[REDACTED_PHONE]');
       document.getElementById('guard-output').innerText = cleaned;
     }
 
-    // Auto poll stats every 2 seconds
-    setInterval(fetchStats, 2000);
+    // Initialize API key input from localStorage
+    const savedKey = localStorage.getItem('kurisu_master_key');
+    if (savedKey) {
+      const inputEl = document.getElementById('api-key-input');
+      if (inputEl) inputEl.value = savedKey;
+    }
+
+    // Auto poll stats every 2.5 seconds
+    setInterval(fetchStats, 2500);
     fetchStats();
   </script>
 </body>

@@ -12,20 +12,26 @@ import (
 	"time"
 
 	"github.com/Baranigsiz/kurisu/internal/domain"
+	"github.com/Baranigsiz/kurisu/internal/engine"
 	"github.com/Baranigsiz/kurisu/internal/providers"
 	"github.com/google/uuid"
 )
 
 // Provider implements the Provider interface for Google Gemini API
 type Provider struct {
-	apiKey     string
+	keyPool    *engine.KeyPool
 	baseURL    string
 	models     map[string]bool
 	httpClient *http.Client
 }
 
-// NewProvider creates a Google Gemini adapter
+// NewProvider creates a Google Gemini adapter with a single key
 func NewProvider(apiKey, baseURL string, models []string, timeout time.Duration) *Provider {
+	return NewProviderWithKeys(apiKey, nil, baseURL, models, timeout)
+}
+
+// NewProviderWithKeys creates a Google Gemini adapter with multi-key load balancing
+func NewProviderWithKeys(primaryKey string, apiKeys []string, baseURL string, models []string, timeout time.Duration) *Provider {
 	if baseURL == "" {
 		baseURL = "https://generativelanguage.googleapis.com/v1beta"
 	}
@@ -37,7 +43,7 @@ func NewProvider(apiKey, baseURL string, models []string, timeout time.Duration)
 	}
 
 	return &Provider{
-		apiKey:     apiKey,
+		keyPool:    engine.NewKeyPoolFromConfig(primaryKey, apiKeys, 60),
 		baseURL:    baseURL,
 		models:     modelMap,
 		httpClient: providers.DefaultHTTPClient(timeout),
@@ -101,6 +107,15 @@ type geminiResp struct {
 	UsageMetadata geminiUsageMetadata `json:"usageMetadata"`
 }
 
+func (p *Provider) getKey() string {
+	if p.keyPool != nil {
+		if k, ok := p.keyPool.NextKey(); ok {
+			return k
+		}
+	}
+	return ""
+}
+
 func (p *Provider) Complete(ctx context.Context, req *domain.ChatCompletionRequest) (*domain.ChatCompletionResponse, error) {
 	gReq := p.transformRequest(req)
 
@@ -109,8 +124,9 @@ func (p *Provider) Complete(ctx context.Context, req *domain.ChatCompletionReque
 		return nil, fmt.Errorf("failed to marshal gemini request: %w", err)
 	}
 
+	key := p.getKey()
 	modelName := p.cleanModelName(req.Model)
-	url := fmt.Sprintf("%s/models/%s:generateContent?key=%s", p.baseURL, modelName, p.apiKey)
+	url := fmt.Sprintf("%s/models/%s:generateContent?key=%s", p.baseURL, modelName, key)
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(raw))
 	if err != nil {
@@ -125,6 +141,9 @@ func (p *Provider) Complete(ctx context.Context, req *domain.ChatCompletionReque
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
+		if res.StatusCode == http.StatusTooManyRequests && p.keyPool != nil && key != "" {
+			p.keyPool.MarkFailure(key)
+		}
 		bodyBytes, _ := io.ReadAll(res.Body)
 		return nil, domain.NewAPIError(res.StatusCode, "gemini_error", fmt.Sprintf("gemini returned %d: %s", res.StatusCode, string(bodyBytes)))
 	}
@@ -145,8 +164,9 @@ func (p *Provider) Stream(ctx context.Context, req *domain.ChatCompletionRequest
 		return fmt.Errorf("failed to marshal gemini streaming request: %w", err)
 	}
 
+	key := p.getKey()
 	modelName := p.cleanModelName(req.Model)
-	url := fmt.Sprintf("%s/models/%s:streamGenerateContent?alt=sse&key=%s", p.baseURL, modelName, p.apiKey)
+	url := fmt.Sprintf("%s/models/%s:streamGenerateContent?alt=sse&key=%s", p.baseURL, modelName, key)
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(raw))
 	if err != nil {
@@ -162,6 +182,9 @@ func (p *Provider) Stream(ctx context.Context, req *domain.ChatCompletionRequest
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
+		if res.StatusCode == http.StatusTooManyRequests && p.keyPool != nil && key != "" {
+			p.keyPool.MarkFailure(key)
+		}
 		bodyBytes, _ := io.ReadAll(res.Body)
 		return domain.NewAPIError(res.StatusCode, "gemini_error", fmt.Sprintf("gemini stream returned %d: %s", res.StatusCode, string(bodyBytes)))
 	}
@@ -232,7 +255,8 @@ func (p *Provider) Embed(ctx context.Context, req *domain.EmbeddingRequest) (*do
 }
 
 func (p *Provider) Health(ctx context.Context) error {
-	if p.apiKey == "" {
+	key := p.getKey()
+	if key == "" {
 		return fmt.Errorf("gemini api key not configured")
 	}
 	return nil

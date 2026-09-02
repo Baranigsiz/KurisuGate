@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Baranigsiz/kurisu/internal/config"
+	"github.com/Baranigsiz/kurisu/internal/domain"
 	"github.com/Baranigsiz/kurisu/internal/engine"
 	"github.com/Baranigsiz/kurisu/internal/metrics"
 	"github.com/Baranigsiz/kurisu/internal/ui"
@@ -18,6 +19,7 @@ type Server struct {
 	cfg        *config.Config
 	handler    *Handler
 	collector  *metrics.Collector
+	vkMgr      *domain.VirtualKeyManager
 }
 
 // NewServer configures routes, middlewares, and initializes the HTTP gateway server
@@ -27,7 +29,12 @@ func NewServer(
 	router *engine.Router,
 	collector *metrics.Collector,
 ) *Server {
-	h := NewHandler(executor, router, collector)
+	vkMgr := domain.NewVirtualKeyManager(cfg.Server.VirtualKeys)
+	if executor != nil {
+		executor.SetVirtualKeyManager(vkMgr)
+	}
+
+	h := NewHandler(executor, router, collector, vkMgr)
 
 	mux := http.NewServeMux()
 
@@ -35,7 +42,10 @@ func NewServer(
 	mux.HandleFunc("/", h.RootHandler)
 	mux.HandleFunc("/health", h.HealthHandler)
 	mux.HandleFunc("/stats", h.StatsHandler)
-	mux.HandleFunc("/metrics", collector.PrometheusHandler())
+	mux.HandleFunc("/api/virtual-keys", h.VirtualKeysHandler)
+	if collector != nil {
+		mux.HandleFunc("/metrics", collector.PrometheusHandler())
+	}
 
 	// Embedded Web Dashboard & Playground
 	mux.Handle("/ui", ui.Handler())
@@ -54,7 +64,7 @@ func NewServer(
 
 	var rootHandler http.Handler = mux
 	rootHandler = RateLimitMiddleware(rateLimiter, cfg.RateLimit.Enabled, rootHandler)
-	rootHandler = AuthMiddleware(cfg, rootHandler)
+	rootHandler = AuthMiddleware(cfg, vkMgr, rootHandler)
 	rootHandler = CORSMiddleware(cfg.Server.EnableCORS, rootHandler)
 	rootHandler = RecoveryMiddleware(rootHandler)
 
@@ -77,7 +87,13 @@ func NewServer(
 		cfg:        cfg,
 		handler:    h,
 		collector:  collector,
+		vkMgr:      vkMgr,
 	}
+}
+
+// VirtualKeyManager returns the active virtual key manager
+func (s *Server) VirtualKeyManager() *domain.VirtualKeyManager {
+	return s.vkMgr
 }
 
 // Start launches the HTTP listener

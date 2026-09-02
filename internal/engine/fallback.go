@@ -27,6 +27,7 @@ type Executor struct {
 	embedProvider providers.Provider
 	redactor      *guard.Redactor
 	localEmbed    *cache.LocalEmbeddingEngine
+	virtualKeyMgr *domain.VirtualKeyManager
 }
 
 // NewExecutor creates a new request executor
@@ -67,12 +68,37 @@ func NewExecutor(
 	}
 }
 
+// SetVirtualKeyManager registers virtual key manager for budget tracking
+func (e *Executor) SetVirtualKeyManager(vkm *domain.VirtualKeyManager) {
+	e.virtualKeyMgr = vkm
+}
+
 // ExecuteChatCompletion runs a non-streaming chat request with caching & fallback
 func (e *Executor) ExecuteChatCompletion(ctx context.Context, req *domain.ChatCompletionRequest) (*domain.ChatCompletionResponse, error) {
 	start := time.Now()
 	resolvedModel := e.router.ResolveModel(req.Model)
+
+	// Apply weighted target resolution if configured
+	forceProvider := req.ForceProvider
+	if weightedModel, weightedProv, isWeighted := e.router.ResolveWeightedTarget(resolvedModel); isWeighted {
+		resolvedModel = weightedModel
+		if forceProvider == "" {
+			forceProvider = weightedProv
+		}
+	}
+
 	reqCopy := *req
 	reqCopy.Model = resolvedModel
+
+	// Context & prompt compression if enabled
+	if e.cfg.Guard.PromptCompression.Enabled {
+		for i := range reqCopy.Messages {
+			reqCopy.Messages[i].Content = CompressText(reqCopy.Messages[i].Content)
+		}
+		if e.cfg.Guard.PromptCompression.MaxContextMessages > 0 {
+			reqCopy.Messages = FitContextWindow(reqCopy.Messages, e.cfg.Guard.PromptCompression.MaxContextMessages)
+		}
+	}
 
 	// Redact sensitive PII and API keys if Guard is enabled
 	if e.redactor != nil {
@@ -113,13 +139,7 @@ func (e *Executor) ExecuteChatCompletion(ctx context.Context, req *domain.ChatCo
 	}
 
 	// 2. Semantic Cache Check
-	var promptText string
-	for _, m := range req.Messages {
-		if m.Role == domain.RoleUser {
-			promptText += m.Content + " "
-		}
-	}
-	promptText = strings.TrimSpace(promptText)
+	promptText := buildSemanticPrompt(req.Messages)
 
 	if e.semanticCache != nil && !req.DisableCache && e.cfg.Cache.Semantic.Enabled && promptText != "" {
 		queryVec, err := e.getPromptVector(ctx, promptText)
@@ -209,6 +229,7 @@ func (e *Executor) ExecuteChatCompletion(ctx context.Context, req *domain.ChatCo
 			}
 
 			// Record metrics
+			costIncurred := metrics.CalculateCost(targetModel, resp.Usage.PromptTokens, resp.Usage.CompletionTokens)
 			e.collector.RecordRequest(metrics.RequestLog{
 				ID:           resp.ID,
 				Timestamp:    time.Now(),
@@ -219,7 +240,15 @@ func (e *Executor) ExecuteChatCompletion(ctx context.Context, req *domain.ChatCo
 				Cached:       false,
 				PromptTokens: resp.Usage.PromptTokens,
 				CompTokens:   resp.Usage.CompletionTokens,
+				CostIncurred: costIncurred,
 			})
+
+			// Record spend on virtual key if authenticated
+			if e.virtualKeyMgr != nil {
+				if vk, ok := domain.GetVirtualKeyFromContext(ctx); ok && vk != nil {
+					e.virtualKeyMgr.RecordSpend(vk.Key, costIncurred)
+				}
+			}
 
 			return resp, nil
 		}
@@ -266,8 +295,28 @@ func (e *Executor) ExecuteChatStream(
 ) error {
 	start := time.Now()
 	resolvedModel := e.router.ResolveModel(req.Model)
+
+	// Apply weighted target resolution if configured
+	forceProvider := req.ForceProvider
+	if weightedModel, weightedProv, isWeighted := e.router.ResolveWeightedTarget(resolvedModel); isWeighted {
+		resolvedModel = weightedModel
+		if forceProvider == "" {
+			forceProvider = weightedProv
+		}
+	}
+
 	reqCopy := *req
 	reqCopy.Model = resolvedModel
+
+	// Context & prompt compression if enabled
+	if e.cfg.Guard.PromptCompression.Enabled {
+		for i := range reqCopy.Messages {
+			reqCopy.Messages[i].Content = CompressText(reqCopy.Messages[i].Content)
+		}
+		if e.cfg.Guard.PromptCompression.MaxContextMessages > 0 {
+			reqCopy.Messages = FitContextWindow(reqCopy.Messages, e.cfg.Guard.PromptCompression.MaxContextMessages)
+		}
+	}
 
 	// Redact sensitive PII and API keys if Guard is enabled
 	if e.redactor != nil {
@@ -286,28 +335,61 @@ func (e *Executor) ExecuteChatStream(
 		currentReq := reqCopy
 		currentReq.Model = targetModel
 
-		provider, err := e.router.FindProvider(targetModel, req.ForceProvider)
+		provider, err := e.router.FindProvider(targetModel, forceProvider)
 		if err != nil {
 			lastErr = err
 			continue
 		}
 
+		var compTokens int
+		var promptTokens int
+		// Estimate prompt tokens (~4 chars per token)
+		for _, m := range currentReq.Messages {
+			promptTokens += (len(m.Content) + 3) / 4
+		}
+
 		err = provider.Stream(ctx, &currentReq, func(chunk *domain.ChatCompletionChunk) error {
 			streamStarted = true
+			if chunk.Usage != nil {
+				if chunk.Usage.PromptTokens > 0 {
+					promptTokens = chunk.Usage.PromptTokens
+				}
+				if chunk.Usage.CompletionTokens > 0 {
+					compTokens = chunk.Usage.CompletionTokens
+				}
+			} else {
+				for _, c := range chunk.Choices {
+					if c.Delta.Content != "" {
+						compTokens += (len(c.Delta.Content) + 3) / 4
+					}
+				}
+			}
 			return onChunk(chunk)
 		})
 
 		if err == nil {
 			duration := time.Since(start)
+			costIncurred := metrics.CalculateCost(targetModel, promptTokens, compTokens)
 			e.collector.RecordRequest(metrics.RequestLog{
-				ID:         "stream-" + uuid.New().String(),
-				Timestamp:  time.Now(),
-				Model:      targetModel,
-				Provider:   provider.Name(),
-				StatusCode: http.StatusOK,
-				Duration:   duration,
-				Stream:     true,
+				ID:           "stream-" + uuid.New().String(),
+				Timestamp:    time.Now(),
+				Model:        targetModel,
+				Provider:     provider.Name(),
+				StatusCode:   http.StatusOK,
+				Duration:     duration,
+				Stream:       true,
+				PromptTokens: promptTokens,
+				CompTokens:   compTokens,
+				CostIncurred: costIncurred,
 			})
+
+			// Record spend on virtual key if authenticated
+			if e.virtualKeyMgr != nil {
+				if vk, ok := domain.GetVirtualKeyFromContext(ctx); ok && vk != nil {
+					e.virtualKeyMgr.RecordSpend(vk.Key, costIncurred)
+				}
+			}
+
 			return nil
 		}
 
@@ -353,6 +435,28 @@ func (e *Executor) getPromptVector(ctx context.Context, text string) ([]float64,
 
 	// Graceful fallback to zero-dependency local embedding if remote embedding fails
 	return e.localEmbed.EmbedText(text), nil
+}
+
+// buildSemanticPrompt serializes conversation messages into a canonical string preserving system context
+func buildSemanticPrompt(messages []domain.Message) string {
+	var parts []string
+	for _, m := range messages {
+		content := strings.TrimSpace(m.Content)
+		if content == "" {
+			continue
+		}
+		switch m.Role {
+		case domain.RoleSystem:
+			parts = append(parts, "system: "+content)
+		case domain.RoleUser:
+			parts = append(parts, "user: "+content)
+		case domain.RoleAssistant:
+			parts = append(parts, "assistant: "+content)
+		default:
+			parts = append(parts, m.Role+": "+content)
+		}
+	}
+	return strings.Join(parts, "\n")
 }
 
 func isRetriableError(err error) bool {

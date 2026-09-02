@@ -233,3 +233,42 @@ func TestServer_FallbackFailover(t *testing.T) {
 		t.Errorf("expected response to come from secondary-prov, got %s", resp.Choices[0].Message.Content)
 	}
 }
+
+func TestServer_AuthMiddleware_UIWhitelist(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Server.MasterKeys = []string{"secret-key"}
+
+	srv := server.NewServer(cfg, nil, nil, nil)
+
+	// Accessing /ui without auth must NOT return 401
+	req, _ := http.NewRequest(http.MethodGet, "/ui", nil)
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code == http.StatusUnauthorized {
+		t.Errorf("expected /ui to be whitelisted without 401 Unauthorized, got %d", rec.Code)
+	}
+
+	// Accessing /v1/chat/completions without auth MUST return 401
+	reqAPI, _ := http.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader([]byte("{}")))
+	recAPI := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(recAPI, reqAPI)
+
+	if recAPI.Code != http.StatusUnauthorized {
+		t.Errorf("expected /v1/chat/completions without auth to return 401, got %d", recAPI.Code)
+	}
+}
+
+func TestServer_RateLimiter_Eviction(t *testing.T) {
+	limiter := server.NewTokenBucketRateLimiter(60, 5)
+
+	// Add requests from multiple IPs
+	limiter.Allow("192.168.1.1")
+	limiter.Allow("192.168.1.2")
+
+	// Cleanup with 0 maxAge (simulate expired)
+	evicted := limiter.Cleanup(0)
+	if evicted < 2 {
+		t.Errorf("expected at least 2 evicted buckets, got %d", evicted)
+	}
+}

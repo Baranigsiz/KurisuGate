@@ -137,3 +137,55 @@ func (s *SemanticCache) Clear() {
 	defer s.mu.Unlock()
 	s.entries = make([]SemanticEntry, 0, s.capacity)
 }
+
+// SemanticEntryExport represents serializable snapshot of semantic cache entry
+type SemanticEntryExport struct {
+	Prompt    string                        `json:"prompt"`
+	Model     string                        `json:"model"`
+	Embedding []float64                     `json:"embedding"`
+	Response  domain.ChatCompletionResponse `json:"response"`
+	ExpiresAt time.Time                     `json:"expires_at"`
+}
+
+// ExportEntries exports all unexpired semantic cache entries for persistence
+func (s *SemanticCache) ExportEntries() []SemanticEntryExport {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	now := time.Now()
+	var entries []SemanticEntryExport
+	for _, e := range s.entries {
+		if now.Before(e.ExpiresAt) {
+			entries = append(entries, SemanticEntryExport{
+				Prompt:    e.Prompt,
+				Model:     e.Model,
+				Embedding: e.Embedding,
+				Response:  e.Response,
+				ExpiresAt: e.ExpiresAt,
+			})
+		}
+	}
+	return entries
+}
+
+// ImportEntries bulk-loads unexpired semantic cache entries from snapshot
+func (s *SemanticCache) ImportEntries(entries []SemanticEntryExport) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := time.Now()
+	imported := 0
+	for _, e := range entries {
+		if now.Before(e.ExpiresAt) {
+			s.entries = append(s.entries, SemanticEntry{
+				Prompt:    e.Prompt,
+				Model:     e.Model,
+				Embedding: e.Embedding,
+				Response:  e.Response,
+				ExpiresAt: e.ExpiresAt,
+			})
+			imported++
+		}
+	}
+	return imported
+}

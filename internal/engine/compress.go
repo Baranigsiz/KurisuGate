@@ -8,14 +8,18 @@ import (
 )
 
 var (
-	multiNewlineRegex = regexp.MustCompile(`\n{3,}`)
-	multiSpaceRegex   = regexp.MustCompile(`[ \t]{2,}`)
+	multiSpaceRegex        = regexp.MustCompile(`[ \t]{2,}`)
+	trailingLineSpaceRegex = regexp.MustCompile(`[ \t]+\n`)
+	leadingLineSpaceRegex  = regexp.MustCompile(`\n[ \t]+`)
+	multiNewlineRegex      = regexp.MustCompile(`\n{3,}`)
 )
 
 // CompressText removes redundant spaces and excessive blank lines without altering meaning
 func CompressText(text string) string {
-	text = multiNewlineRegex.ReplaceAllString(text, "\n\n")
 	text = multiSpaceRegex.ReplaceAllString(text, " ")
+	text = trailingLineSpaceRegex.ReplaceAllString(text, "\n")
+	text = leadingLineSpaceRegex.ReplaceAllString(text, "\n")
+	text = multiNewlineRegex.ReplaceAllString(text, "\n\n")
 	return strings.TrimSpace(text)
 }
 

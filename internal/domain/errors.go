@@ -45,6 +45,10 @@ func ErrUnauthorized(message string) *APIError {
 	return NewAPIError(http.StatusUnauthorized, "invalid_request_error", message, "invalid_api_key")
 }
 
+func ErrForbidden(message string) *APIError {
+	return NewAPIError(http.StatusForbidden, "permission_denied", message, "permission_denied")
+}
+
 func ErrInvalidRequest(message string) *APIError {
 	return NewAPIError(http.StatusBadRequest, "invalid_request_error", message)
 }

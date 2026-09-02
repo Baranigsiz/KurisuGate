@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -42,24 +43,27 @@ func CORSMiddleware(enabled bool, next http.Handler) http.Handler {
 	})
 }
 
-// AuthMiddleware verifies incoming master API keys if configured
-func AuthMiddleware(cfg *config.Config, next http.Handler) http.Handler {
-	validKeys := make(map[string]bool)
+// AuthMiddleware verifies incoming master API keys or virtual keys if configured
+func AuthMiddleware(cfg *config.Config, vkMgr *domain.VirtualKeyManager, next http.Handler) http.Handler {
+	masterKeys := make(map[string]bool)
 	for _, k := range cfg.Server.MasterKeys {
 		if strings.TrimSpace(k) != "" {
-			validKeys[strings.TrimSpace(k)] = true
+			masterKeys[strings.TrimSpace(k)] = true
 		}
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Public endpoints
-		if r.URL.Path == "/health" || r.URL.Path == "/metrics" || r.URL.Path == "/" {
+		// Public endpoints (health, stats, metrics, root info, model list, virtual keys, and embedded Web UI)
+		if r.URL.Path == "/health" || r.URL.Path == "/stats" || r.URL.Path == "/metrics" || r.URL.Path == "/" ||
+			r.URL.Path == "/ui" || strings.HasPrefix(r.URL.Path, "/ui/") ||
+			r.URL.Path == "/v1/models" || r.URL.Path == "/api/virtual-keys" {
 			next.ServeHTTP(w, r)
 			return
 		}
 
-		// If no master keys are configured, all requests pass
-		if len(validKeys) == 0 {
+		hasVirtualKeys := vkMgr != nil && len(vkMgr.List()) > 0
+		// If neither master keys nor virtual keys are configured, all requests pass
+		if len(masterKeys) == 0 && !hasVirtualKeys {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -72,22 +76,49 @@ func AuthMiddleware(cfg *config.Config, next http.Handler) http.Handler {
 			apiKey = r.Header.Get("x-api-key")
 		}
 
-		if apiKey == "" || !validKeys[apiKey] {
-			err := domain.ErrUnauthorized("Invalid or missing Kurisu API Key. Pass 'Authorization: Bearer <key>'.")
+		if apiKey == "" {
+			err := domain.ErrUnauthorized("Missing API Key. Pass 'Authorization: Bearer <key>'.")
 			err.WriteJSON(w)
 			return
 		}
 
-		next.ServeHTTP(w, r)
+		// 1. Check if it's a Master Key (unrestricted admin access)
+		if masterKeys[apiKey] {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// 2. Check Virtual Key Manager
+		if vkMgr != nil {
+			vk, err := vkMgr.ValidateKey(apiKey, "")
+			if err != nil {
+				var apiErr *domain.APIError
+				if errors.As(err, &apiErr) {
+					apiErr.WriteJSON(w)
+				} else {
+					domain.ErrUnauthorized(err.Error()).WriteJSON(w)
+				}
+				return
+			}
+
+			// Inject virtual key into request context for downstream tracking
+			ctx := domain.WithVirtualKey(r.Context(), vk)
+			next.ServeHTTP(w, r.WithContext(ctx))
+			return
+		}
+
+		err := domain.ErrUnauthorized("Invalid or missing Kurisu API Key. Pass 'Authorization: Bearer <key>'.")
+		err.WriteJSON(w)
 	})
 }
 
-// TokenBucketRateLimiter implements in-memory token bucket rate limiting per IP
+// TokenBucketRateLimiter implements in-memory token bucket rate limiting per IP with auto-eviction
 type TokenBucketRateLimiter struct {
-	mu      sync.Mutex
-	rate    float64 // tokens added per second
-	burst   int     // max bucket capacity
-	buckets map[string]*bucket
+	mu          sync.Mutex
+	rate        float64 // tokens added per second
+	burst       int     // max bucket capacity
+	buckets     map[string]*bucket
+	lastCleanup time.Time
 }
 
 type bucket struct {
@@ -104,9 +135,10 @@ func NewTokenBucketRateLimiter(rpm int, burst int) *TokenBucketRateLimiter {
 		burst = 50
 	}
 	return &TokenBucketRateLimiter{
-		rate:    float64(rpm) / 60.0,
-		burst:   burst,
-		buckets: make(map[string]*bucket),
+		rate:        float64(rpm) / 60.0,
+		burst:       burst,
+		buckets:     make(map[string]*bucket),
+		lastCleanup: time.Now(),
 	}
 }
 
@@ -116,6 +148,12 @@ func (limiter *TokenBucketRateLimiter) Allow(clientIP string) bool {
 	defer limiter.mu.Unlock()
 
 	now := time.Now()
+
+	// Periodic auto-cleanup every 2 minutes for stale IP buckets (> 5 minutes inactive)
+	if now.Sub(limiter.lastCleanup) > 2*time.Minute || len(limiter.buckets) > 5000 {
+		limiter.cleanupLocked(now, 5*time.Minute)
+	}
+
 	b, exists := limiter.buckets[clientIP]
 	if !exists {
 		limiter.buckets[clientIP] = &bucket{
@@ -139,6 +177,25 @@ func (limiter *TokenBucketRateLimiter) Allow(clientIP string) bool {
 	}
 
 	return false
+}
+
+// Cleanup removes stale IP buckets older than maxAge
+func (limiter *TokenBucketRateLimiter) Cleanup(maxAge time.Duration) int {
+	limiter.mu.Lock()
+	defer limiter.mu.Unlock()
+	return limiter.cleanupLocked(time.Now(), maxAge)
+}
+
+func (limiter *TokenBucketRateLimiter) cleanupLocked(now time.Time, maxAge time.Duration) int {
+	evicted := 0
+	for ip, b := range limiter.buckets {
+		if now.Sub(b.lastCheck) >= maxAge {
+			delete(limiter.buckets, ip)
+			evicted++
+		}
+	}
+	limiter.lastCleanup = now
+	return evicted
 }
 
 // RateLimitMiddleware enforces token bucket rate limits

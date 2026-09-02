@@ -203,3 +203,101 @@ func TestProviders_LocalOllama(t *testing.T) {
 		t.Errorf("unexpected content: %s", resp.Choices[0].Message.Content)
 	}
 }
+
+func TestProviders_OpenAI_MultiKey_Cooldown(t *testing.T) {
+	var keysReceived []string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth := r.Header.Get("Authorization")
+		key := strings.TrimPrefix(auth, "Bearer ")
+		keysReceived = append(keysReceived, key)
+
+		if key == "key-1" {
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(`{"error": "rate limit exceeded"}`))
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"id": "cmpl-ok",
+			"choices": [{"index": 0, "message": {"role": "assistant", "content": "Success with key-2"}}]
+		}`))
+	}))
+	defer server.Close()
+
+	prov := openai.NewProviderWithKeys("test-pool", "key-1", []string{"key-2"}, server.URL, nil, 5*time.Second)
+
+	// First request with key-1 -> will get 429 and put key-1 in cooldown
+	_, err1 := prov.Complete(context.Background(), &domain.ChatCompletionRequest{
+		Model: "gpt-4o",
+		Messages: []domain.Message{{Role: "user", Content: "Hello"}},
+	})
+	if err1 == nil {
+		t.Errorf("expected error from key-1")
+	}
+
+	// Second request -> must automatically use key-2
+	resp2, err2 := prov.Complete(context.Background(), &domain.ChatCompletionRequest{
+		Model: "gpt-4o",
+		Messages: []domain.Message{{Role: "user", Content: "Hello again"}},
+	})
+	if err2 != nil {
+		t.Fatalf("expected key-2 to succeed: %v", err2)
+	}
+	if resp2.Choices[0].Message.Content != "Success with key-2" {
+		t.Errorf("unexpected response content: %s", resp2.Choices[0].Message.Content)
+	}
+
+	if len(keysReceived) != 2 || keysReceived[0] != "key-1" || keysReceived[1] != "key-2" {
+		t.Errorf("expected keys [key-1, key-2], got %v", keysReceived)
+	}
+}
+
+func TestProviders_Anthropic_RoleMerging(t *testing.T) {
+	var receivedBody map[string]interface{}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &receivedBody)
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"id": "msg_merged",
+			"type": "message",
+			"role": "assistant",
+			"content": [{"type": "text", "text": "Merged response"}],
+			"stop_reason": "end_turn",
+			"usage": {"input_tokens": 10, "output_tokens": 10}
+		}`))
+	}))
+	defer server.Close()
+
+	prov := anthropic.NewProvider("sk-ant-test", server.URL, nil, 5*time.Second)
+
+	// Send two consecutive "user" messages
+	resp, err := prov.Complete(context.Background(), &domain.ChatCompletionRequest{
+		Model: "claude-3-5-sonnet",
+		Messages: []domain.Message{
+			{Role: "user", Content: "First prompt part."},
+			{Role: "user", Content: "Second prompt part."},
+		},
+	})
+	if err != nil {
+		t.Fatalf("anthropic complete failed: %v", err)
+	}
+
+	if resp.Choices[0].Message.Content != "Merged response" {
+		t.Errorf("unexpected content: %s", resp.Choices[0].Message.Content)
+	}
+
+	// Verify messages in request body were merged into 1 alternating user message
+	rawMsgs, ok := receivedBody["messages"].([]interface{})
+	if !ok || len(rawMsgs) != 1 {
+		t.Fatalf("expected 1 merged message in Anthropic request, got %d", len(rawMsgs))
+	}
+	firstMsg := rawMsgs[0].(map[string]interface{})
+	if firstMsg["role"] != "user" || !strings.Contains(firstMsg["content"].(string), "First prompt part.") || !strings.Contains(firstMsg["content"].(string), "Second prompt part.") {
+		t.Errorf("unexpected merged content: %v", firstMsg["content"])
+	}
+}

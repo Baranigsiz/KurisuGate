@@ -62,6 +62,7 @@ type RequestLog struct {
 	PromptTokens int           `json:"prompt_tokens"`
 	CompTokens   int           `json:"comp_tokens"`
 	CostSaved    float64       `json:"cost_saved,omitempty"`
+	CostIncurred float64       `json:"cost_incurred,omitempty"`
 	Error        string        `json:"error,omitempty"`
 	Stream       bool          `json:"stream"`
 }

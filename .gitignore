@@ -26,3 +26,8 @@ kurisu.yaml
 .idea/
 .vscode/
 *.swp
+
+# Cache data files
+data/
+*.tmp
+kurisu_cache.json

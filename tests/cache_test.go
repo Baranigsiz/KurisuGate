@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -143,5 +144,108 @@ func TestLocalEmbeddingEngine(t *testing.T) {
 	}
 	if simFar > 0.40 {
 		t.Errorf("expected low similarity for unrelated topics, got %f", simFar)
+	}
+}
+
+func TestExactCache_HashRequestToolsAndFormat(t *testing.T) {
+	reqBase := &domain.ChatCompletionRequest{
+		Model: "gpt-4o",
+		Messages: []domain.Message{
+			{Role: "user", Content: "Calculate 2+2"},
+		},
+	}
+	hashBase := cache.HashRequest(reqBase)
+
+	// Same prompt but requesting structured JSON
+	reqJSON := &domain.ChatCompletionRequest{
+		Model: "gpt-4o",
+		Messages: []domain.Message{
+			{Role: "user", Content: "Calculate 2+2"},
+		},
+		ResponseFormat: &domain.ResponseFormat{Type: "json_object"},
+	}
+	hashJSON := cache.HashRequest(reqJSON)
+
+	if hashBase == hashJSON {
+		t.Errorf("expected different hashes when ResponseFormat is set, got identical %s", hashBase)
+	}
+
+	// Same prompt but providing tool calls
+	reqTool := &domain.ChatCompletionRequest{
+		Model: "gpt-4o",
+		Messages: []domain.Message{
+			{Role: "user", Content: "Calculate 2+2"},
+		},
+		Tools: []domain.Tool{
+			{
+				Type: "function",
+				Function: domain.ToolFunction{
+					Name: "calculator",
+				},
+			},
+		},
+	}
+	hashTool := cache.HashRequest(reqTool)
+
+	if hashBase == hashTool || hashJSON == hashTool {
+		t.Errorf("expected distinct hash when Tools are present")
+	}
+}
+
+func TestCachePersistence_SaveAndRestore(t *testing.T) {
+	tempFile := filepath.Join(t.TempDir(), "test_cache.json")
+	mgr := cache.NewSnapshotManager(tempFile)
+
+	exact1 := cache.NewExactCache(100, 3600)
+	semantic1 := cache.NewSemanticCache(100, 0.90, 3600)
+
+	// Populate exact cache
+	exact1.Set("hash-key-1", domain.ChatCompletionResponse{
+		ID:    "cmpl-exact-1",
+		Model: "gpt-4o",
+		Choices: []domain.Choice{
+			{Index: 0, Message: domain.Message{Role: "assistant", Content: "Exact content"}},
+		},
+	})
+
+	// Populate semantic cache
+	vec := []float64{0.1, 0.2, 0.3}
+	semantic1.Set("semantic prompt", "gpt-4o", vec, domain.ChatCompletionResponse{
+		ID:    "cmpl-sem-1",
+		Model: "gpt-4o",
+		Choices: []domain.Choice{
+			{Index: 0, Message: domain.Message{Role: "assistant", Content: "Semantic content"}},
+		},
+	})
+
+	// Save snapshot
+	err := mgr.SaveSnapshot(exact1, semantic1)
+	if err != nil {
+		t.Fatalf("failed to save snapshot: %v", err)
+	}
+
+	// Create new fresh cache instances
+	exact2 := cache.NewExactCache(100, 3600)
+	semantic2 := cache.NewSemanticCache(100, 0.90, 3600)
+
+	exactCount, semCount, err := mgr.RestoreSnapshot(exact2, semantic2)
+	if err != nil {
+		t.Fatalf("failed to restore snapshot: %v", err)
+	}
+
+	if exactCount != 1 || semCount != 1 {
+		t.Fatalf("expected 1 exact and 1 semantic restored, got exact=%d, sem=%d", exactCount, semCount)
+	}
+
+	// Verify exact cache retrieval
+	gotExact, found := exact2.Get("hash-key-1")
+	if !found || gotExact.ID != "cmpl-exact-1" {
+		t.Errorf("failed to retrieve restored exact cache entry")
+	}
+
+	// Verify semantic cache retrieval
+	gotSem, score, found := semantic2.Search(vec, "gpt-4o")
+	if !found || gotSem.ID != "cmpl-sem-1" || score < 0.99 {
+		t.Errorf("failed to retrieve restored semantic cache entry")
 	}
 }

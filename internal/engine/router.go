@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"strings"
 	"sync"
 
@@ -13,11 +14,12 @@ import (
 
 // Router manages provider registries, model aliases, and target dispatch
 type Router struct {
-	mu             sync.RWMutex
-	providers      []providers.Provider
-	providerMap    map[string]providers.Provider
-	modelAliases   map[string]string
-	fallbackChains map[string][]string
+	mu              sync.RWMutex
+	providers       []providers.Provider
+	providerMap     map[string]providers.Provider
+	modelAliases    map[string]string
+	fallbackChains  map[string][]string
+	weightedTargets map[string][]config.WeightedTarget
 }
 
 // NewRouter constructs a router with registered providers and alias definitions
@@ -41,12 +43,54 @@ func NewRouter(cfg *config.Config, provs []providers.Provider) *Router {
 		}
 	}
 
-	return &Router{
-		providers:      provs,
-		providerMap:    pMap,
-		modelAliases:   aliases,
-		fallbackChains: fallbacks,
+	weighted := make(map[string][]config.WeightedTarget)
+	if cfg.Routing.WeightedTargets != nil {
+		for k, v := range cfg.Routing.WeightedTargets {
+			weighted[strings.ToLower(k)] = v
+		}
 	}
+
+	return &Router{
+		providers:       provs,
+		providerMap:     pMap,
+		modelAliases:    aliases,
+		fallbackChains:  fallbacks,
+		weightedTargets: weighted,
+	}
+}
+
+// ResolveWeightedTarget checks if model has weighted multi-provider distribution and chooses a target
+func (r *Router) ResolveWeightedTarget(model string) (targetModel string, forceProvider string, isWeighted bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	targets, exists := r.weightedTargets[strings.ToLower(model)]
+	if !exists || len(targets) == 0 {
+		return model, "", false
+	}
+
+	totalWeight := 0
+	for _, t := range targets {
+		if t.Weight > 0 {
+			totalWeight += t.Weight
+		}
+	}
+	if totalWeight <= 0 {
+		return targets[0].Model, targets[0].Provider, true
+	}
+
+	randomWeight := rand.Intn(totalWeight)
+	runningWeight := 0
+	for _, t := range targets {
+		if t.Weight > 0 {
+			runningWeight += t.Weight
+			if randomWeight < runningWeight {
+				return t.Model, t.Provider, true
+			}
+		}
+	}
+
+	return targets[0].Model, targets[0].Provider, true
 }
 
 // ResolveModel maps any alias or smart routing keywords (cheapest, fastest) to concrete models

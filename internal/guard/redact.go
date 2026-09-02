@@ -107,7 +107,7 @@ func (r *Redactor) RedactText(text string) (string, int) {
 	return text, redactions
 }
 
-// RedactRequest processes all user messages in a request in-place
+// RedactRequest processes all messages in a request in-place
 func (r *Redactor) RedactRequest(req *domain.ChatCompletionRequest) int {
 	if !r.cfg.Enabled {
 		return 0
@@ -115,7 +115,7 @@ func (r *Redactor) RedactRequest(req *domain.ChatCompletionRequest) int {
 
 	totalRedacted := 0
 	for i := range req.Messages {
-		if req.Messages[i].Role == domain.RoleUser {
+		if req.Messages[i].Content != "" {
 			cleaned, count := r.RedactText(req.Messages[i].Content)
 			if count > 0 {
 				req.Messages[i].Content = cleaned

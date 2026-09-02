@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Baranigsiz/kurisu/internal/domain"
@@ -17,15 +18,22 @@ type Handler struct {
 	executor  *engine.Executor
 	router    *engine.Router
 	collector *metrics.Collector
+	vkMgr     *domain.VirtualKeyManager
 	startTime time.Time
 }
 
 // NewHandler creates initialized Handler
-func NewHandler(executor *engine.Executor, router *engine.Router, collector *metrics.Collector) *Handler {
+func NewHandler(
+	executor *engine.Executor,
+	router *engine.Router,
+	collector *metrics.Collector,
+	vkMgr *domain.VirtualKeyManager,
+) *Handler {
 	return &Handler{
 		executor:  executor,
 		router:    router,
 		collector: collector,
+		vkMgr:     vkMgr,
 		startTime: time.Now(),
 	}
 }
@@ -62,6 +70,9 @@ func (h *Handler) ChatCompletionsHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// 32MB max request body limit
+	r.Body = http.MaxBytesReader(w, r.Body, 32<<20)
+
 	var req domain.ChatCompletionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		domain.ErrInvalidRequest(fmt.Sprintf("Malformed JSON request body: %v", err)).WriteJSON(w)
@@ -75,6 +86,23 @@ func (h *Handler) ChatCompletionsHandler(w http.ResponseWriter, r *http.Request)
 	if len(req.Messages) == 0 {
 		domain.ErrInvalidRequest("Messages array cannot be empty").WriteJSON(w)
 		return
+	}
+
+	// Verify virtual key model permissions
+	if vk, ok := domain.GetVirtualKeyFromContext(r.Context()); ok && vk != nil {
+		if len(vk.AllowedModels) > 0 {
+			allowed := false
+			for _, m := range vk.AllowedModels {
+				if strings.EqualFold(m, req.Model) || m == "*" {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				domain.ErrForbidden(fmt.Sprintf("Model %q is not permitted for API key %q. Allowed: %v", req.Model, vk.Name, vk.AllowedModels)).WriteJSON(w)
+				return
+			}
+		}
 	}
 
 	// 1. Streaming Mode
@@ -139,10 +167,30 @@ func (h *Handler) EmbeddingsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 32MB max request body limit
+	r.Body = http.MaxBytesReader(w, r.Body, 32<<20)
+
 	var req domain.EmbeddingRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		domain.ErrInvalidRequest(fmt.Sprintf("Malformed JSON request body: %v", err)).WriteJSON(w)
 		return
+	}
+
+	// Verify virtual key model permissions
+	if vk, ok := domain.GetVirtualKeyFromContext(r.Context()); ok && vk != nil {
+		if len(vk.AllowedModels) > 0 {
+			allowed := false
+			for _, m := range vk.AllowedModels {
+				if strings.EqualFold(m, req.Model) || m == "*" {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				domain.ErrForbidden(fmt.Sprintf("Model %q is not permitted for API key %q. Allowed: %v", req.Model, vk.Name, vk.AllowedModels)).WriteJSON(w)
+				return
+			}
+		}
 	}
 
 	resp, err := h.executor.ExecuteEmbeddings(r.Context(), &req)
@@ -214,5 +262,26 @@ func (h *Handler) StatsHandler(w http.ResponseWriter, r *http.Request) {
 		"provider_counts":     snap.ProviderCounts,
 		"model_counts":        snap.ModelCounts,
 		"recent_requests":     snap.RecentLogs,
+	})
+}
+
+// VirtualKeysHandler returns list of registered virtual keys for UI / admin inspection
+func (h *Handler) VirtualKeysHandler(w http.ResponseWriter, r *http.Request) {
+	if h.vkMgr == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"virtual_keys": []domain.VirtualKey{},
+			"count":        0,
+		})
+		return
+	}
+
+	keys := h.vkMgr.List()
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"virtual_keys": keys,
+		"count":        len(keys),
 	})
 }

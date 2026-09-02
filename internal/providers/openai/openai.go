@@ -12,20 +12,26 @@ import (
 	"time"
 
 	"github.com/Baranigsiz/kurisu/internal/domain"
+	"github.com/Baranigsiz/kurisu/internal/engine"
 	"github.com/Baranigsiz/kurisu/internal/providers"
 )
 
 // Provider implements the Provider interface for OpenAI and OpenAI-compatible backends
 type Provider struct {
 	name       string
-	apiKey     string
+	keyPool    *engine.KeyPool
 	baseURL    string
 	models     map[string]bool
 	httpClient *http.Client
 }
 
-// NewProvider creates an OpenAI adapter
+// NewProvider creates an OpenAI adapter with a single key
 func NewProvider(name, apiKey, baseURL string, models []string, timeout time.Duration) *Provider {
+	return NewProviderWithKeys(name, apiKey, nil, baseURL, models, timeout)
+}
+
+// NewProviderWithKeys creates an OpenAI adapter with multi-key load balancing
+func NewProviderWithKeys(name, primaryKey string, apiKeys []string, baseURL string, models []string, timeout time.Duration) *Provider {
 	if baseURL == "" {
 		baseURL = "https://api.openai.com/v1"
 	}
@@ -38,7 +44,7 @@ func NewProvider(name, apiKey, baseURL string, models []string, timeout time.Dur
 
 	return &Provider{
 		name:       name,
-		apiKey:     apiKey,
+		keyPool:    engine.NewKeyPoolFromConfig(primaryKey, apiKeys, 60),
 		baseURL:    baseURL,
 		models:     modelMap,
 		httpClient: providers.DefaultHTTPClient(timeout),
@@ -56,6 +62,15 @@ func (p *Provider) SupportsModel(model string) bool {
 	return p.models[model]
 }
 
+func (p *Provider) getKey() string {
+	if p.keyPool != nil {
+		if k, ok := p.keyPool.NextKey(); ok {
+			return k
+		}
+	}
+	return ""
+}
+
 func (p *Provider) Complete(ctx context.Context, req *domain.ChatCompletionRequest) (*domain.ChatCompletionResponse, error) {
 	reqBody := *req
 	reqBody.Stream = false
@@ -70,7 +85,8 @@ func (p *Provider) Complete(ctx context.Context, req *domain.ChatCompletionReque
 		return nil, err
 	}
 
-	p.setHeaders(httpReq)
+	key := p.getKey()
+	p.setHeaders(httpReq, key)
 
 	res, err := p.httpClient.Do(httpReq)
 	if err != nil {
@@ -79,6 +95,9 @@ func (p *Provider) Complete(ctx context.Context, req *domain.ChatCompletionReque
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
+		if res.StatusCode == http.StatusTooManyRequests && p.keyPool != nil && key != "" {
+			p.keyPool.MarkFailure(key)
+		}
 		bodyBytes, _ := io.ReadAll(res.Body)
 		return nil, domain.NewAPIError(res.StatusCode, "upstream_error", fmt.Sprintf("%s returned %d: %s", p.name, res.StatusCode, string(bodyBytes)))
 	}
@@ -105,7 +124,8 @@ func (p *Provider) Stream(ctx context.Context, req *domain.ChatCompletionRequest
 		return err
 	}
 
-	p.setHeaders(httpReq)
+	key := p.getKey()
+	p.setHeaders(httpReq, key)
 	httpReq.Header.Set("Accept", "text/event-stream")
 
 	res, err := p.httpClient.Do(httpReq)
@@ -115,6 +135,9 @@ func (p *Provider) Stream(ctx context.Context, req *domain.ChatCompletionRequest
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
+		if res.StatusCode == http.StatusTooManyRequests && p.keyPool != nil && key != "" {
+			p.keyPool.MarkFailure(key)
+		}
 		bodyBytes, _ := io.ReadAll(res.Body)
 		return domain.NewAPIError(res.StatusCode, "upstream_error", fmt.Sprintf("%s stream returned %d: %s", p.name, res.StatusCode, string(bodyBytes)))
 	}
@@ -161,7 +184,8 @@ func (p *Provider) Embed(ctx context.Context, req *domain.EmbeddingRequest) (*do
 		return nil, err
 	}
 
-	p.setHeaders(httpReq)
+	key := p.getKey()
+	p.setHeaders(httpReq, key)
 
 	res, err := p.httpClient.Do(httpReq)
 	if err != nil {
@@ -170,6 +194,9 @@ func (p *Provider) Embed(ctx context.Context, req *domain.EmbeddingRequest) (*do
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
+		if res.StatusCode == http.StatusTooManyRequests && p.keyPool != nil && key != "" {
+			p.keyPool.MarkFailure(key)
+		}
 		bodyBytes, _ := io.ReadAll(res.Body)
 		return nil, domain.NewAPIError(res.StatusCode, "upstream_error", fmt.Sprintf("%s returned %d: %s", p.name, res.StatusCode, string(bodyBytes)))
 	}
@@ -187,7 +214,8 @@ func (p *Provider) Health(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	p.setHeaders(httpReq)
+	key := p.getKey()
+	p.setHeaders(httpReq, key)
 
 	res, err := p.httpClient.Do(httpReq)
 	if err != nil {
@@ -206,7 +234,8 @@ func (p *Provider) ListModels(ctx context.Context) ([]domain.Model, error) {
 	if err != nil {
 		return nil, err
 	}
-	p.setHeaders(httpReq)
+	key := p.getKey()
+	p.setHeaders(httpReq, key)
 
 	res, err := p.httpClient.Do(httpReq)
 	if err != nil {
@@ -241,9 +270,13 @@ func (p *Provider) ListModels(ctx context.Context) ([]domain.Model, error) {
 	return modelList.Data, nil
 }
 
-func (p *Provider) setHeaders(req *http.Request) {
+func (p *Provider) setHeaders(req *http.Request, key string) {
 	req.Header.Set("Content-Type", "application/json")
-	if p.apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+p.apiKey)
+	if key != "" {
+		req.Header.Set("Authorization", "Bearer "+key)
+	}
+	if p.name == "openrouter" {
+		req.Header.Set("HTTP-Referer", "https://github.com/Baranigsiz/KurisuGate")
+		req.Header.Set("X-Title", "KurisuGate")
 	}
 }

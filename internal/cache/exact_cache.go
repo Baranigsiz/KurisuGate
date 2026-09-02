@@ -52,21 +52,31 @@ func NewExactCache(capacity int, ttlSeconds int) *ExactCache {
 func HashRequest(req *domain.ChatCompletionRequest) string {
 	// Canonical representation of request parameters that affect output
 	canonical := struct {
-		Model       string           `json:"model"`
-		Messages    []domain.Message `json:"messages"`
-		Temperature *float64         `json:"temperature,omitempty"`
-		TopP        *float64         `json:"top_p,omitempty"`
-		MaxTokens   *int             `json:"max_tokens,omitempty"`
-		Stop        interface{}      `json:"stop,omitempty"`
-		Seed        *int             `json:"seed,omitempty"`
+		Model            string                 `json:"model"`
+		Messages         []domain.Message       `json:"messages"`
+		Temperature      *float64               `json:"temperature,omitempty"`
+		TopP             *float64               `json:"top_p,omitempty"`
+		MaxTokens        *int                   `json:"max_tokens,omitempty"`
+		Stop             interface{}            `json:"stop,omitempty"`
+		Seed             *int                   `json:"seed,omitempty"`
+		Tools            []domain.Tool          `json:"tools,omitempty"`
+		ToolChoice       interface{}            `json:"tool_choice,omitempty"`
+		ResponseFormat   *domain.ResponseFormat `json:"response_format,omitempty"`
+		PresencePenalty  *float64               `json:"presence_penalty,omitempty"`
+		FrequencyPenalty *float64               `json:"frequency_penalty,omitempty"`
 	}{
-		Model:       req.Model,
-		Messages:    req.Messages,
-		Temperature: req.Temperature,
-		TopP:        req.TopP,
-		MaxTokens:   req.MaxTokens,
-		Stop:        req.Stop,
-		Seed:        req.Seed,
+		Model:            req.Model,
+		Messages:         req.Messages,
+		Temperature:      req.Temperature,
+		TopP:             req.TopP,
+		MaxTokens:        req.MaxTokens,
+		Stop:             req.Stop,
+		Seed:             req.Seed,
+		Tools:            req.Tools,
+		ToolChoice:       req.ToolChoice,
+		ResponseFormat:   req.ResponseFormat,
+		PresencePenalty:  req.PresencePenalty,
+		FrequencyPenalty: req.FrequencyPenalty,
 	}
 
 	raw, _ := json.Marshal(canonical)
@@ -178,4 +188,57 @@ func (c *ExactCache) moveToHead(node *exactNode) {
 	}
 	c.removeNode(node)
 	c.addToHead(node)
+}
+
+// ExactCacheEntryExport represents serializable snapshot of exact cache item
+type ExactCacheEntryExport struct {
+	Key       string                        `json:"key"`
+	Value     domain.ChatCompletionResponse `json:"value"`
+	ExpiresAt time.Time                     `json:"expires_at"`
+}
+
+// ExportEntries exports all unexpired cache items for persistence
+func (c *ExactCache) ExportEntries() []ExactCacheEntryExport {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	now := time.Now()
+	var entries []ExactCacheEntryExport
+	for k, node := range c.items {
+		if now.Before(node.expiresAt) {
+			entries = append(entries, ExactCacheEntryExport{
+				Key:       k,
+				Value:     node.value,
+				ExpiresAt: node.expiresAt,
+			})
+		}
+	}
+	return entries
+}
+
+// ImportEntries bulk-loads unexpired cache items from snapshot
+func (c *ExactCache) ImportEntries(entries []ExactCacheEntryExport) int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	now := time.Now()
+	imported := 0
+	for _, e := range entries {
+		if now.Before(e.ExpiresAt) {
+			if len(c.items) >= c.capacity && c.tail != nil {
+				evictedKey := c.tail.key
+				c.removeNode(c.tail)
+				delete(c.items, evictedKey)
+			}
+			newNode := &exactNode{
+				key:       e.Key,
+				value:     e.Value,
+				expiresAt: e.ExpiresAt,
+			}
+			c.items[e.Key] = newNode
+			c.addToHead(newNode)
+			imported++
+		}
+	}
+	return imported
 }

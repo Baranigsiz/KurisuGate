@@ -12,20 +12,26 @@ import (
 	"time"
 
 	"github.com/Baranigsiz/kurisu/internal/domain"
+	"github.com/Baranigsiz/kurisu/internal/engine"
 	"github.com/Baranigsiz/kurisu/internal/providers"
 	"github.com/google/uuid"
 )
 
 // Provider implements the Provider interface for Anthropic Claude
 type Provider struct {
-	apiKey     string
+	keyPool    *engine.KeyPool
 	baseURL    string
 	models     map[string]bool
 	httpClient *http.Client
 }
 
-// NewProvider creates an Anthropic adapter
+// NewProvider creates an Anthropic adapter with a single key
 func NewProvider(apiKey, baseURL string, models []string, timeout time.Duration) *Provider {
+	return NewProviderWithKeys(apiKey, nil, baseURL, models, timeout)
+}
+
+// NewProviderWithKeys creates an Anthropic adapter with multi-key load balancing
+func NewProviderWithKeys(primaryKey string, apiKeys []string, baseURL string, models []string, timeout time.Duration) *Provider {
 	if baseURL == "" {
 		baseURL = "https://api.anthropic.com/v1"
 	}
@@ -37,7 +43,7 @@ func NewProvider(apiKey, baseURL string, models []string, timeout time.Duration)
 	}
 
 	return &Provider{
-		apiKey:     apiKey,
+		keyPool:    engine.NewKeyPoolFromConfig(primaryKey, apiKeys, 60),
 		baseURL:    baseURL,
 		models:     modelMap,
 		httpClient: providers.DefaultHTTPClient(timeout),
@@ -102,6 +108,15 @@ type anthropicResp struct {
 	Usage      anthropicUsage         `json:"usage"`
 }
 
+func (p *Provider) getKey() string {
+	if p.keyPool != nil {
+		if k, ok := p.keyPool.NextKey(); ok {
+			return k
+		}
+	}
+	return ""
+}
+
 func (p *Provider) Complete(ctx context.Context, req *domain.ChatCompletionRequest) (*domain.ChatCompletionResponse, error) {
 	aReq := p.transformRequest(req, false)
 
@@ -115,7 +130,8 @@ func (p *Provider) Complete(ctx context.Context, req *domain.ChatCompletionReque
 		return nil, err
 	}
 
-	p.setHeaders(httpReq)
+	key := p.getKey()
+	p.setHeaders(httpReq, key)
 
 	res, err := p.httpClient.Do(httpReq)
 	if err != nil {
@@ -124,6 +140,9 @@ func (p *Provider) Complete(ctx context.Context, req *domain.ChatCompletionReque
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
+		if res.StatusCode == http.StatusTooManyRequests && p.keyPool != nil && key != "" {
+			p.keyPool.MarkFailure(key)
+		}
 		bodyBytes, _ := io.ReadAll(res.Body)
 		return nil, domain.NewAPIError(res.StatusCode, "anthropic_error", fmt.Sprintf("anthropic returned %d: %s", res.StatusCode, string(bodyBytes)))
 	}
@@ -149,7 +168,8 @@ func (p *Provider) Stream(ctx context.Context, req *domain.ChatCompletionRequest
 		return err
 	}
 
-	p.setHeaders(httpReq)
+	key := p.getKey()
+	p.setHeaders(httpReq, key)
 	httpReq.Header.Set("Accept", "text/event-stream")
 
 	res, err := p.httpClient.Do(httpReq)
@@ -159,6 +179,9 @@ func (p *Provider) Stream(ctx context.Context, req *domain.ChatCompletionRequest
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
+		if res.StatusCode == http.StatusTooManyRequests && p.keyPool != nil && key != "" {
+			p.keyPool.MarkFailure(key)
+		}
 		bodyBytes, _ := io.ReadAll(res.Body)
 		return domain.NewAPIError(res.StatusCode, "anthropic_error", fmt.Sprintf("anthropic stream returned %d: %s", res.StatusCode, string(bodyBytes)))
 	}
@@ -241,8 +264,8 @@ func (p *Provider) Embed(ctx context.Context, req *domain.EmbeddingRequest) (*do
 }
 
 func (p *Provider) Health(ctx context.Context) error {
-	// Simple minimal message check or valid API key format check
-	if p.apiKey == "" {
+	key := p.getKey()
+	if key == "" {
 		return fmt.Errorf("anthropic api key not configured")
 	}
 	return nil
@@ -271,7 +294,7 @@ func (p *Provider) ListModels(ctx context.Context) ([]domain.Model, error) {
 
 func (p *Provider) transformRequest(req *domain.ChatCompletionRequest, stream bool) anthropicReq {
 	var systemParts []string
-	var messages []anthropicMessage
+	var rawMessages []anthropicMessage
 
 	for _, msg := range req.Messages {
 		if msg.Role == domain.RoleSystem {
@@ -281,12 +304,15 @@ func (p *Provider) transformRequest(req *domain.ChatCompletionRequest, stream bo
 			if role != "user" && role != "assistant" {
 				role = "user"
 			}
-			messages = append(messages, anthropicMessage{
+			rawMessages = append(rawMessages, anthropicMessage{
 				Role:    role,
 				Content: msg.Content,
 			})
 		}
 	}
+
+	// Anthropic Messages API requires messages to strictly alternate roles
+	messages := mergeConsecutiveRoles(rawMessages)
 
 	maxTokens := 4096
 	if req.MaxTokens != nil && *req.MaxTokens > 0 {
@@ -314,6 +340,32 @@ func (p *Provider) transformRequest(req *domain.ChatCompletionRequest, stream bo
 		Stream:      stream,
 		Tools:       tools,
 	}
+}
+
+// mergeConsecutiveRoles ensures no two consecutive messages have the same role
+func mergeConsecutiveRoles(messages []anthropicMessage) []anthropicMessage {
+	if len(messages) == 0 {
+		return messages
+	}
+
+	var merged []anthropicMessage
+	for _, m := range messages {
+		if len(merged) > 0 && merged[len(merged)-1].Role == m.Role {
+			// Combine consecutive messages of the same role
+			prevContent := fmt.Sprintf("%v", merged[len(merged)-1].Content)
+			newContent := fmt.Sprintf("%v", m.Content)
+			merged[len(merged)-1].Content = prevContent + "\n\n" + newContent
+		} else {
+			merged = append(merged, m)
+		}
+	}
+
+	// Anthropic requires the first message in the array to have the "user" role
+	if len(merged) > 0 && merged[0].Role != "user" {
+		merged[0].Role = "user"
+	}
+
+	return merged
 }
 
 func (p *Provider) transformResponse(aResp *anthropicResp, requestedModel string) *domain.ChatCompletionResponse {
@@ -374,8 +426,10 @@ func (p *Provider) transformResponse(aResp *anthropicResp, requestedModel string
 	}
 }
 
-func (p *Provider) setHeaders(req *http.Request) {
+func (p *Provider) setHeaders(req *http.Request, key string) {
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-api-key", p.apiKey)
+	if key != "" {
+		req.Header.Set("x-api-key", key)
+	}
 	req.Header.Set("anthropic-version", "2023-06-01")
 }

@@ -117,3 +117,35 @@ func TestMetricsCollector_CostCalculation(t *testing.T) {
 		t.Errorf("expected > $0.0124 cost saved, got %f", snap.TotalCostSaved)
 	}
 }
+
+func TestRouter_WeightedLoadBalancing(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Routing.WeightedTargets["hybrid-chat"] = []config.WeightedTarget{
+		{Provider: "deepseek", Model: "deepseek-chat", Weight: 70},
+		{Provider: "openai", Model: "gpt-4o-mini", Weight: 30},
+	}
+
+	router := engine.NewRouter(cfg, nil)
+
+	counts := make(map[string]int)
+	const trials = 1000
+
+	for i := 0; i < trials; i++ {
+		targetModel, prov, isWeighted := router.ResolveWeightedTarget("hybrid-chat")
+		if !isWeighted {
+			t.Fatalf("expected hybrid-chat to be recognized as weighted target")
+		}
+		counts[prov+"-"+targetModel]++
+	}
+
+	deepseekCount := counts["deepseek-deepseek-chat"]
+	openaiCount := counts["openai-gpt-4o-mini"]
+
+	// With 70/30 weight, deepseek should receive roughly 600-800 out of 1000 requests
+	if deepseekCount < 600 || deepseekCount > 800 {
+		t.Errorf("expected DeepSeek count around ~700, got %d", deepseekCount)
+	}
+	if openaiCount < 200 || openaiCount > 400 {
+		t.Errorf("expected OpenAI count around ~300, got %d", openaiCount)
+	}
+}
