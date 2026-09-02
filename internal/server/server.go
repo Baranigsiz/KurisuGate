@@ -43,6 +43,7 @@ func NewServer(
 	mux.HandleFunc("/health", h.HealthHandler)
 	mux.HandleFunc("/stats", h.StatsHandler)
 	mux.HandleFunc("/api/virtual-keys", h.VirtualKeysHandler)
+	mux.HandleFunc("/api/cache/purge", h.PurgeCacheHandler)
 	if collector != nil {
 		mux.HandleFunc("/metrics", collector.PrometheusHandler())
 	}

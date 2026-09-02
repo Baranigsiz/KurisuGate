@@ -202,14 +202,7 @@ func (r *Router) FindProvider(model, forceProvider string) (providers.Provider, 
 		}
 	}
 
-	// 2. Check provider capabilities
-	for _, p := range r.providers {
-		if p.SupportsModel(model) {
-			return p, nil
-		}
-	}
-
-	// 3. Heuristics fallback across all 12 major provider families
+	// 2. Family heuristics across major provider families (handles un-prefixed models accurately)
 	lower := strings.ToLower(model)
 	if strings.HasPrefix(lower, "claude-") {
 		if p, ok := r.providerMap["anthropic"]; ok {
@@ -252,12 +245,19 @@ func (r *Router) FindProvider(model, forceProvider string) (providers.Provider, 
 		}
 	}
 
-	// 4. Default to first available provider
-	if len(r.providers) > 0 {
-		return r.providers[0], nil
+	// 3. Check provider capabilities
+	for _, p := range r.providers {
+		if p.SupportsModel(model) {
+			return p, nil
+		}
 	}
 
-	return nil, domain.ErrNotFound(fmt.Sprintf("no active provider configured to serve model %q", model))
+	// 4. If mock/simulation provider is available, use it for demo & unconfigured models
+	if p, ok := r.providerMap["mock"]; ok {
+		return p, nil
+	}
+
+	return nil, domain.ErrNotFound(fmt.Sprintf("no active provider configured to serve model %q. Please enable the corresponding provider in kurisu.yaml", model))
 }
 
 // ListAllModels aggregates models across all configured providers and aliases

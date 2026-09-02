@@ -3,6 +3,7 @@ package server
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -53,10 +54,10 @@ func AuthMiddleware(cfg *config.Config, vkMgr *domain.VirtualKeyManager, next ht
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Public endpoints (health, stats, metrics, root info, model list, virtual keys, and embedded Web UI)
+		// Public endpoints (health, stats, metrics, root info, model list, virtual keys, cache purge, and embedded Web UI)
 		if r.URL.Path == "/health" || r.URL.Path == "/stats" || r.URL.Path == "/metrics" || r.URL.Path == "/" ||
 			r.URL.Path == "/ui" || strings.HasPrefix(r.URL.Path, "/ui/") ||
-			r.URL.Path == "/v1/models" || r.URL.Path == "/api/virtual-keys" {
+			r.URL.Path == "/v1/models" || r.URL.Path == "/api/virtual-keys" || r.URL.Path == "/api/cache/purge" {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -204,7 +205,9 @@ func RateLimitMiddleware(limiter *TokenBucketRateLimiter, enabled bool, next htt
 		if enabled && limiter != nil {
 			clientIP := r.RemoteAddr
 			if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
-				clientIP = strings.Split(forwarded, ",")[0]
+				clientIP = strings.TrimSpace(strings.Split(forwarded, ",")[0])
+			} else if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+				clientIP = host
 			}
 
 			if !limiter.Allow(clientIP) {

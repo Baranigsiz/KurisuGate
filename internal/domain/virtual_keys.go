@@ -162,3 +162,16 @@ func (m *VirtualKeyManager) Add(vk VirtualKey) {
 	kCopy := vk
 	m.keys[strings.TrimSpace(vk.Key)] = &kCopy
 }
+
+// Delete revokes and removes a virtual key by its key string
+func (m *VirtualKeyManager) Delete(apiKey string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	key := strings.TrimSpace(apiKey)
+	if _, exists := m.keys[key]; exists {
+		delete(m.keys, key)
+		return true
+	}
+	return false
+}

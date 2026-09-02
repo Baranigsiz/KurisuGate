@@ -100,6 +100,25 @@ Benchmarked on **AMD Ryzen 5 5600X (6-Core, 12-Threads)** with `go test -bench=.
 
 ---
 
+## 💡 How It Works & Execution Modes
+
+KurisuGate operates in two seamless modes depending on your environment:
+
+### 🎮 Mode 1: Instant Simulation & Playground Mode (Zero-Config Demo)
+* **When it activates:** When you clone and run KurisuGate without configuring any cloud API keys.
+* **What it does:** KurisuGate automatically engages its internal, zero-dependency **Simulation Engine**. You can launch the Web Dashboard (`http://localhost:8080/ui`), enter prompts in the **Side-by-Side Model Duel**, test live SSE token streaming, inspect PII redaction, and watch real-time cache hits and latency sparklines immediately without creating cloud accounts or entering credit cards.
+
+### 🚀 Mode 2: Enterprise Production Mode (Live LLMs & Cache Savings)
+* **When it activates:** As soon as you configure one or more real provider API keys in `kurisu.yaml` or environment variables:
+  ```bash
+  export OPENAI_API_KEY="sk-proj-..."
+  export GEMINI_API_KEY="AIzaSy..."
+  export ANTHROPIC_API_KEY="sk-ant-..."
+  ```
+* **What it does:** KurisuGate acts as an enterprise-grade intelligent reverse proxy for your apps (Cursor, LangChain, Next.js, Python apps). It intercepts requests, masks sensitive secrets, checks exact and semantic caches for sub-millisecond instant hits (slashing API bills by 40-80%), enforces virtual key monthly budgets, and automatically fails over across models if an upstream provider experiences outages or rate limits.
+
+---
+
 ## 🚀 Quick Start
 
 ### 1. Run with Docker Compose (Recommended)
@@ -131,13 +150,13 @@ docker run -d -p 8080:8080 \
 
 ```bash
 # Build binary
-make build
+go build -o kurisugate.exe ./cmd/kurisu
 
-# Start KurisuGate
+# Start KurisuGate gateway (opens on http://0.0.0.0:8080)
 ./kurisugate start
 
-# Or start with interactive Charm TUI
-./kurisugate start --tui
+# Access the embedded Web UI in your browser:
+# http://localhost:8080/ui
 ```
 
 ---
@@ -243,6 +262,24 @@ routing:
       - "gemini-2.0-flash"
       - "llama3.2"
 ```
+
+---
+
+## 📡 REST API Reference
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/v1/chat/completions` | `POST` | OpenAI-compatible chat completions with caching, PII redaction, and fallback |
+| `/v1/embeddings` | `POST` | OpenAI-compatible embeddings generation endpoint |
+| `/v1/models` | `GET` | Lists all aggregated models across configured providers |
+| `/api/virtual-keys` | `GET` | List all registered virtual keys, spending, and budgets |
+| `/api/virtual-keys` | `POST` | Create a new virtual key (`name`, `monthly_budget_usd`, `allowed_models`) |
+| `/api/virtual-keys` | `DELETE` | Revoke a virtual key by key token (`?key=kg-...`) |
+| `/api/cache/purge` | `POST` | Immediately flushes all Exact LRU and Semantic Vector caches |
+| `/health` | `GET` | Gateway health check and uptime status |
+| `/stats` | `GET` | Real-time traffic metrics, cache hit ratio, and dollar savings |
+| `/metrics` | `GET` | Prometheus / OpenTelemetry telemetry scrape endpoint |
+| `/ui` | `GET` | Embedded Cyberpunk Web UI Dashboard & Model Duel Playground |
 
 ---
 

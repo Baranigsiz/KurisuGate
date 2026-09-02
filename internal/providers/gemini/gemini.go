@@ -217,7 +217,7 @@ func (p *Provider) Stream(ctx context.Context, req *domain.ChatCompletionRequest
 				}
 
 				var finishReason *string
-				if cand.FinishReason != "" && cand.FinishReason != "STOP" {
+				if cand.FinishReason != "" {
 					fr := strings.ToLower(cand.FinishReason)
 					finishReason = &fr
 				}
@@ -283,7 +283,7 @@ func (p *Provider) ListModels(ctx context.Context) ([]domain.Model, error) {
 }
 
 func (p *Provider) transformRequest(req *domain.ChatCompletionRequest) geminiReq {
-	var contents []geminiContent
+	var rawContents []geminiContent
 	var systemParts []geminiPart
 
 	for _, msg := range req.Messages {
@@ -294,7 +294,7 @@ func (p *Provider) transformRequest(req *domain.ChatCompletionRequest) geminiReq
 			if msg.Role == domain.RoleAssistant {
 				role = "model"
 			}
-			contents = append(contents, geminiContent{
+			rawContents = append(rawContents, geminiContent{
 				Role: role,
 				Parts: []geminiPart{
 					{Text: msg.Content},
@@ -302,6 +302,8 @@ func (p *Provider) transformRequest(req *domain.ChatCompletionRequest) geminiReq
 			})
 		}
 	}
+
+	contents := mergeConsecutiveGeminiContents(rawContents)
 
 	var sysInst *geminiSystemInstruction
 	if len(systemParts) > 0 {
@@ -322,6 +324,28 @@ func (p *Provider) transformRequest(req *domain.ChatCompletionRequest) geminiReq
 		SystemInstruction: sysInst,
 		GenerationConfig:  genConfig,
 	}
+}
+
+// mergeConsecutiveGeminiContents ensures Gemini turns strictly alternate roles and starts with user
+func mergeConsecutiveGeminiContents(contents []geminiContent) []geminiContent {
+	if len(contents) == 0 {
+		return contents
+	}
+
+	var merged []geminiContent
+	for _, c := range contents {
+		if len(merged) > 0 && merged[len(merged)-1].Role == c.Role {
+			merged[len(merged)-1].Parts = append(merged[len(merged)-1].Parts, c.Parts...)
+		} else {
+			merged = append(merged, c)
+		}
+	}
+
+	if len(merged) > 0 && merged[0].Role != "user" {
+		merged[0].Role = "user"
+	}
+
+	return merged
 }
 
 func (p *Provider) transformResponse(gResp *geminiResp, requestedModel string) *domain.ChatCompletionResponse {

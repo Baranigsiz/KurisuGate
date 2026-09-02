@@ -73,6 +73,16 @@ func (e *Executor) SetVirtualKeyManager(vkm *domain.VirtualKeyManager) {
 	e.virtualKeyMgr = vkm
 }
 
+// PurgeCache clears all entries from both exact and semantic caches
+func (e *Executor) PurgeCache() {
+	if e.exactCache != nil {
+		e.exactCache.Clear()
+	}
+	if e.semanticCache != nil {
+		e.semanticCache.Clear()
+	}
+}
+
 // ExecuteChatCompletion runs a non-streaming chat request with caching & fallback
 func (e *Executor) ExecuteChatCompletion(ctx context.Context, req *domain.ChatCompletionRequest) (*domain.ChatCompletionResponse, error) {
 	start := time.Now()
@@ -89,6 +99,8 @@ func (e *Executor) ExecuteChatCompletion(ctx context.Context, req *domain.ChatCo
 
 	reqCopy := *req
 	reqCopy.Model = resolvedModel
+	reqCopy.Messages = make([]domain.Message, len(req.Messages))
+	copy(reqCopy.Messages, req.Messages)
 
 	// Context & prompt compression if enabled
 	if e.cfg.Guard.PromptCompression.Enabled {
@@ -139,7 +151,7 @@ func (e *Executor) ExecuteChatCompletion(ctx context.Context, req *domain.ChatCo
 	}
 
 	// 2. Semantic Cache Check
-	promptText := buildSemanticPrompt(req.Messages)
+	promptText := buildSemanticPrompt(reqCopy.Messages)
 
 	if e.semanticCache != nil && !req.DisableCache && e.cfg.Cache.Semantic.Enabled && promptText != "" {
 		queryVec, err := e.getPromptVector(ctx, promptText)
@@ -307,6 +319,8 @@ func (e *Executor) ExecuteChatStream(
 
 	reqCopy := *req
 	reqCopy.Model = resolvedModel
+	reqCopy.Messages = make([]domain.Message, len(req.Messages))
+	copy(reqCopy.Messages, req.Messages)
 
 	// Context & prompt compression if enabled
 	if e.cfg.Guard.PromptCompression.Enabled {
@@ -395,6 +409,28 @@ func (e *Executor) ExecuteChatStream(
 
 		// If stream already started writing chunks to client, we cannot cleanly fallback to another model mid-stream
 		if streamStarted {
+			if compTokens > 0 || promptTokens > 0 {
+				duration := time.Since(start)
+				costIncurred := metrics.CalculateCost(targetModel, promptTokens, compTokens)
+				e.collector.RecordRequest(metrics.RequestLog{
+					ID:           "stream-" + uuid.New().String(),
+					Timestamp:    time.Now(),
+					Model:        targetModel,
+					Provider:     provider.Name(),
+					StatusCode:   http.StatusOK,
+					Duration:     duration,
+					Stream:       true,
+					PromptTokens: promptTokens,
+					CompTokens:   compTokens,
+					CostIncurred: costIncurred,
+				})
+
+				if e.virtualKeyMgr != nil {
+					if vk, ok := domain.GetVirtualKeyFromContext(ctx); ok && vk != nil {
+						e.virtualKeyMgr.RecordSpend(vk.Key, costIncurred)
+					}
+				}
+			}
 			return err
 		}
 

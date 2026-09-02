@@ -17,6 +17,7 @@ import (
 	"github.com/Baranigsiz/kurisu/internal/providers"
 	"github.com/Baranigsiz/kurisu/internal/providers/anthropic"
 	"github.com/Baranigsiz/kurisu/internal/providers/gemini"
+	"github.com/Baranigsiz/kurisu/internal/providers/mock"
 	"github.com/Baranigsiz/kurisu/internal/providers/ollama"
 	"github.com/Baranigsiz/kurisu/internal/providers/openai"
 	"github.com/Baranigsiz/kurisu/internal/server"
@@ -45,6 +46,8 @@ Dual-Tier Semantic & Exact Cache, Privacy Guard, and Charm TUI Dashboard.`,
 	}
 
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "Path to configuration file (default: kurisu.yaml)")
+	rootCmd.PersistentFlags().IntVarP(&portFlag, "port", "p", 0, "Override HTTP port")
+	rootCmd.PersistentFlags().StringVarP(&hostFlag, "host", "H", "", "Override HTTP host")
 
 	// Start command
 	startCmd := &cobra.Command{
@@ -52,8 +55,6 @@ Dual-Tier Semantic & Exact Cache, Privacy Guard, and Charm TUI Dashboard.`,
 		Short: "Start the Kurisu AI Gateway server",
 		RunE:  runStart,
 	}
-	startCmd.Flags().IntVarP(&portFlag, "port", "p", 0, "Override HTTP port")
-	startCmd.Flags().StringVarP(&hostFlag, "host", "H", "", "Override HTTP host")
 	startCmd.Flags().BoolVarP(&tuiFlag, "tui", "t", false, "Start with interactive live Charm TUI dashboard")
 
 	// Test command
@@ -274,6 +275,11 @@ func buildApp(cfgPath string) (*App, error) {
 		))
 	}
 
+	// Fallback to internal simulation provider if no upstream API credentials configured
+	if len(provs) == 0 {
+		provs = append(provs, mock.NewProvider())
+	}
+
 	collector := metrics.NewCollector()
 	exactCache := cache.NewExactCache(cfg.Cache.Exact.MaxEntries, cfg.Cache.Exact.TTLSeconds)
 	semanticCache := cache.NewSemanticCache(
@@ -410,38 +416,42 @@ func runTest(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	if cfg.Providers.OpenAI.APIKey != "" {
-		testProvider("OpenAI", openai.NewProvider("openai", cfg.Providers.OpenAI.APIKey, cfg.Providers.OpenAI.BaseURL, nil, timeout))
+	hasKeys := func(s config.ProviderSettings) bool {
+		return s.APIKey != "" || len(s.APIKeys) > 0
 	}
-	if cfg.Providers.Anthropic.APIKey != "" {
-		testProvider("Anthropic", anthropic.NewProvider(cfg.Providers.Anthropic.APIKey, cfg.Providers.Anthropic.BaseURL, nil, timeout))
+
+	if hasKeys(cfg.Providers.OpenAI) {
+		testProvider("OpenAI", openai.NewProviderWithKeys("openai", cfg.Providers.OpenAI.APIKey, cfg.Providers.OpenAI.APIKeys, cfg.Providers.OpenAI.BaseURL, nil, timeout))
 	}
-	if cfg.Providers.Gemini.APIKey != "" {
-		testProvider("Gemini", gemini.NewProvider(cfg.Providers.Gemini.APIKey, cfg.Providers.Gemini.BaseURL, nil, timeout))
+	if hasKeys(cfg.Providers.Anthropic) {
+		testProvider("Anthropic", anthropic.NewProviderWithKeys(cfg.Providers.Anthropic.APIKey, cfg.Providers.Anthropic.APIKeys, cfg.Providers.Anthropic.BaseURL, nil, timeout))
 	}
-	if cfg.Providers.DeepSeek.APIKey != "" {
-		testProvider("DeepSeek", openai.NewProvider("deepseek", cfg.Providers.DeepSeek.APIKey, cfg.Providers.DeepSeek.BaseURL, nil, timeout))
+	if hasKeys(cfg.Providers.Gemini) {
+		testProvider("Gemini", gemini.NewProviderWithKeys(cfg.Providers.Gemini.APIKey, cfg.Providers.Gemini.APIKeys, cfg.Providers.Gemini.BaseURL, nil, timeout))
 	}
-	if cfg.Providers.Groq.APIKey != "" {
-		testProvider("Groq", openai.NewProvider("groq", cfg.Providers.Groq.APIKey, cfg.Providers.Groq.BaseURL, nil, timeout))
+	if hasKeys(cfg.Providers.DeepSeek) {
+		testProvider("DeepSeek", openai.NewProviderWithKeys("deepseek", cfg.Providers.DeepSeek.APIKey, cfg.Providers.DeepSeek.APIKeys, cfg.Providers.DeepSeek.BaseURL, nil, timeout))
 	}
-	if cfg.Providers.Mistral.APIKey != "" {
-		testProvider("Mistral", openai.NewProvider("mistral", cfg.Providers.Mistral.APIKey, cfg.Providers.Mistral.BaseURL, nil, timeout))
+	if hasKeys(cfg.Providers.Groq) {
+		testProvider("Groq", openai.NewProviderWithKeys("groq", cfg.Providers.Groq.APIKey, cfg.Providers.Groq.APIKeys, cfg.Providers.Groq.BaseURL, nil, timeout))
 	}
-	if cfg.Providers.XAI.APIKey != "" {
-		testProvider("xAI/Grok", openai.NewProvider("xai", cfg.Providers.XAI.APIKey, cfg.Providers.XAI.BaseURL, nil, timeout))
+	if hasKeys(cfg.Providers.Mistral) {
+		testProvider("Mistral", openai.NewProviderWithKeys("mistral", cfg.Providers.Mistral.APIKey, cfg.Providers.Mistral.APIKeys, cfg.Providers.Mistral.BaseURL, nil, timeout))
 	}
-	if cfg.Providers.OpenRouter.APIKey != "" {
-		testProvider("OpenRouter", openai.NewProvider("openrouter", cfg.Providers.OpenRouter.APIKey, cfg.Providers.OpenRouter.BaseURL, nil, timeout))
+	if hasKeys(cfg.Providers.XAI) {
+		testProvider("xAI/Grok", openai.NewProviderWithKeys("xai", cfg.Providers.XAI.APIKey, cfg.Providers.XAI.APIKeys, cfg.Providers.XAI.BaseURL, nil, timeout))
 	}
-	if cfg.Providers.Together.APIKey != "" {
-		testProvider("Together", openai.NewProvider("together", cfg.Providers.Together.APIKey, cfg.Providers.Together.BaseURL, nil, timeout))
+	if hasKeys(cfg.Providers.OpenRouter) {
+		testProvider("OpenRouter", openai.NewProviderWithKeys("openrouter", cfg.Providers.OpenRouter.APIKey, cfg.Providers.OpenRouter.APIKeys, cfg.Providers.OpenRouter.BaseURL, nil, timeout))
 	}
-	if cfg.Providers.Perplexity.APIKey != "" {
-		testProvider("Perplexity", openai.NewProvider("perplexity", cfg.Providers.Perplexity.APIKey, cfg.Providers.Perplexity.BaseURL, nil, timeout))
+	if hasKeys(cfg.Providers.Together) {
+		testProvider("Together", openai.NewProviderWithKeys("together", cfg.Providers.Together.APIKey, cfg.Providers.Together.APIKeys, cfg.Providers.Together.BaseURL, nil, timeout))
 	}
-	if cfg.Providers.Cohere.APIKey != "" {
-		testProvider("Cohere", openai.NewProvider("cohere", cfg.Providers.Cohere.APIKey, cfg.Providers.Cohere.BaseURL, nil, timeout))
+	if hasKeys(cfg.Providers.Perplexity) {
+		testProvider("Perplexity", openai.NewProviderWithKeys("perplexity", cfg.Providers.Perplexity.APIKey, cfg.Providers.Perplexity.APIKeys, cfg.Providers.Perplexity.BaseURL, nil, timeout))
+	}
+	if hasKeys(cfg.Providers.Cohere) {
+		testProvider("Cohere", openai.NewProviderWithKeys("cohere", cfg.Providers.Cohere.APIKey, cfg.Providers.Cohere.APIKeys, cfg.Providers.Cohere.BaseURL, nil, timeout))
 	}
 	if cfg.Providers.Ollama.Enabled {
 		testProvider("Ollama", ollama.NewProvider(cfg.Providers.Ollama.BaseURL, nil, timeout))
@@ -452,6 +462,13 @@ func runTest(cmd *cobra.Command, args []string) error {
 
 func runStats(cmd *cobra.Command, args []string) error {
 	cfg, _ := config.LoadConfig(cfgFile)
+	if portFlag > 0 {
+		cfg.Server.Port = portFlag
+	}
+	if hostFlag != "" {
+		cfg.Server.Host = hostFlag
+	}
+
 	url := fmt.Sprintf("http://%s:%d/stats", cfg.Server.Host, cfg.Server.Port)
 	if cfg.Server.Host == "0.0.0.0" {
 		url = fmt.Sprintf("http://localhost:%d/stats", cfg.Server.Port)

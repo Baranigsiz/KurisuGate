@@ -122,6 +122,24 @@ func (r *Redactor) RedactRequest(req *domain.ChatCompletionRequest) int {
 				totalRedacted += count
 			}
 		}
+
+		for j := range req.Messages[i].ToolCalls {
+			if req.Messages[i].ToolCalls[j].Function.Arguments != "" {
+				cleaned, count := r.RedactText(req.Messages[i].ToolCalls[j].Function.Arguments)
+				if count > 0 {
+					req.Messages[i].ToolCalls[j].Function.Arguments = cleaned
+					totalRedacted += count
+				}
+			}
+		}
+
+		if req.Messages[i].FunctionCall != nil && req.Messages[i].FunctionCall.Arguments != "" {
+			cleaned, count := r.RedactText(req.Messages[i].FunctionCall.Arguments)
+			if count > 0 {
+				req.Messages[i].FunctionCall.Arguments = cleaned
+				totalRedacted += count
+			}
+		}
 	}
 	return totalRedacted
 }

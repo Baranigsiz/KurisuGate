@@ -11,6 +11,7 @@ import (
 	"github.com/Baranigsiz/kurisu/internal/domain"
 	"github.com/Baranigsiz/kurisu/internal/engine"
 	"github.com/Baranigsiz/kurisu/internal/metrics"
+	"github.com/google/uuid"
 )
 
 // Handler holds all HTTP route handlers
@@ -91,9 +92,13 @@ func (h *Handler) ChatCompletionsHandler(w http.ResponseWriter, r *http.Request)
 	// Verify virtual key model permissions
 	if vk, ok := domain.GetVirtualKeyFromContext(r.Context()); ok && vk != nil {
 		if len(vk.AllowedModels) > 0 {
+			resolvedModel := req.Model
+			if h.router != nil {
+				resolvedModel = h.router.ResolveModel(req.Model)
+			}
 			allowed := false
 			for _, m := range vk.AllowedModels {
-				if strings.EqualFold(m, req.Model) || m == "*" {
+				if strings.EqualFold(m, req.Model) || strings.EqualFold(m, resolvedModel) || m == "*" {
 					allowed = true
 					break
 				}
@@ -179,9 +184,13 @@ func (h *Handler) EmbeddingsHandler(w http.ResponseWriter, r *http.Request) {
 	// Verify virtual key model permissions
 	if vk, ok := domain.GetVirtualKeyFromContext(r.Context()); ok && vk != nil {
 		if len(vk.AllowedModels) > 0 {
+			resolvedModel := req.Model
+			if h.router != nil {
+				resolvedModel = h.router.ResolveModel(req.Model)
+			}
 			allowed := false
 			for _, m := range vk.AllowedModels {
-				if strings.EqualFold(m, req.Model) || m == "*" {
+				if strings.EqualFold(m, req.Model) || strings.EqualFold(m, resolvedModel) || m == "*" {
 					allowed = true
 					break
 				}
@@ -265,7 +274,7 @@ func (h *Handler) StatsHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// VirtualKeysHandler returns list of registered virtual keys for UI / admin inspection
+// VirtualKeysHandler manages virtual keys (GET list, POST create, DELETE remove)
 func (h *Handler) VirtualKeysHandler(w http.ResponseWriter, r *http.Request) {
 	if h.vkMgr == nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -277,11 +286,80 @@ func (h *Handler) VirtualKeysHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	keys := h.vkMgr.List()
+	switch r.Method {
+	case http.MethodGet:
+		keys := h.vkMgr.List()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"virtual_keys": keys,
+			"count":        len(keys),
+		})
+
+	case http.MethodPost:
+		var newKey domain.VirtualKey
+		if err := json.NewDecoder(r.Body).Decode(&newKey); err != nil {
+			domain.ErrInvalidRequest("Invalid JSON payload").WriteJSON(w)
+			return
+		}
+		if strings.TrimSpace(newKey.Name) == "" {
+			domain.ErrInvalidRequest("Key name is required").WriteJSON(w)
+			return
+		}
+		if strings.TrimSpace(newKey.Key) == "" {
+			newKey.Key = "kg-" + uuid.New().String()[:12]
+		}
+		newKey.Key = strings.TrimSpace(newKey.Key)
+		newKey.Name = strings.TrimSpace(newKey.Name)
+		newKey.Enabled = true
+		h.vkMgr.Add(newKey)
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":  "created",
+			"key":     newKey,
+			"message": "Virtual key created successfully",
+		})
+
+	case http.MethodDelete:
+		key := r.URL.Query().Get("key")
+		if key == "" {
+			var payload struct {
+				Key string `json:"key"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&payload)
+			key = payload.Key
+		}
+		if strings.TrimSpace(key) == "" {
+			domain.ErrInvalidRequest("Query parameter or field 'key' is required").WriteJSON(w)
+			return
+		}
+		deleted := h.vkMgr.Delete(key)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":  "deleted",
+			"success": deleted,
+			"key":     key,
+		})
+
+	default:
+		domain.ErrInvalidRequest("Method not allowed").WriteJSON(w)
+	}
+}
+
+// PurgeCacheHandler flushes exact and semantic in-memory caches
+func (h *Handler) PurgeCacheHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		domain.ErrInvalidRequest("Only POST method allowed").WriteJSON(w)
+		return
+	}
+	if h.executor != nil {
+		h.executor.PurgeCache()
+	}
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"virtual_keys": keys,
-		"count":        len(keys),
+		"status":  "success",
+		"message": "All cache entries (exact and semantic) have been purged.",
 	})
 }

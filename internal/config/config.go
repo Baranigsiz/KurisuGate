@@ -234,7 +234,7 @@ func DefaultConfig() *Config {
 				Models:  []string{"command-r-plus", "command-r"},
 			},
 			Ollama: ProviderSettings{
-				Enabled: true,
+				Enabled: false,
 				BaseURL: "http://localhost:11434",
 				Models:  []string{"llama3.2", "llama3.1", "mistral", "phi3", "qwen2.5", "deepseek-r1:8b"},
 			},

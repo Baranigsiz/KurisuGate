@@ -73,6 +73,29 @@ type ChatCompletionRequest struct {
 	ForceProvider    string          `json:"x_force_provider,omitempty"`
 }
 
+// UnmarshalJSON supports standard fields and Kurisu extensions (e.g. disable_cache, x_disable_cache, force_provider)
+func (r *ChatCompletionRequest) UnmarshalJSON(data []byte) error {
+	type Alias ChatCompletionRequest
+	aux := struct {
+		*Alias
+		DisableCacheAlt  bool   `json:"disable_cache"`
+		NoCache          bool   `json:"no_cache"`
+		ForceProviderAlt string `json:"force_provider"`
+	}{
+		Alias: (*Alias)(r),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	if aux.DisableCacheAlt || aux.NoCache {
+		r.DisableCache = true
+	}
+	if aux.ForceProviderAlt != "" && r.ForceProvider == "" {
+		r.ForceProvider = aux.ForceProviderAlt
+	}
+	return nil
+}
+
 // ResponseFormat specifies structured output (e.g. json_object)
 type ResponseFormat struct {
 	Type string `json:"type"`
